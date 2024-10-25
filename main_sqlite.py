@@ -1,4 +1,4 @@
-import pyodbc
+import sqlite3  # Substituir pyodbc por sqlite3
 import logging
 import tkinter as tk
 from tkinter import messagebox
@@ -13,19 +13,13 @@ import matplotlib.pyplot as plt
 locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 
 # Configurando o logging para registrar erros
-# Configurando o logging para registrar erros
-logging.basicConfig(filename='erros_sistema_contabil.log', level=logging.ERROR,
+logging.basicConfig(filename='nelore.log', level=logging.ERROR,
                     format='%(asctime)s:%(levelname)s:%(message)s')
 
 # Função para conectar ao banco de dados SQLite
 def conectar_banco():
     try:
-        conexao = pyodbc.connect(
-            'DRIVER={SQL Server};'
-            'SERVER=DESKTOP-2BE72MC;'  # Altere conforme necessário
-            'DATABASE=ControleContabil;'  # Nome do banco de dados
-            'Trusted_Connection=yes;'
-        )
+        conexao = sqlite3.connect("nelore.db")  # Nome do banco de dados SQLite
         return conexao
     except Exception as e:
         logging.error(f"Erro ao conectar ao banco de dados: {e}")
@@ -35,7 +29,7 @@ def conectar_banco():
 # Função para formatar o valor em Real Brasileiro
 def formatar_moeda(valor):
     try:
-        valor = float(valor)  # Garantir que o valor seja float
+        valor = float(valor)
         return locale.currency(valor, grouping=True, symbol=True)
     except ValueError:
         return "Valor inválido"
@@ -44,10 +38,8 @@ def formatar_moeda(valor):
 # Função para converter valor de string ou decimal para float (corrigido)
 def converter_valor_para_float(valor_str):
     try:
-        # Verificar se o valor já é um número do tipo Decimal ou float
         if isinstance(valor_str, (float, int, decimal.Decimal)):
             return float(valor_str)
-        # Se for uma string, aplicar a conversão de formato
         valor_str = valor_str.replace('.', '').replace(',', '.')
         return float(valor_str)
     except (ValueError, AttributeError):
@@ -60,16 +52,13 @@ def formatar_data(data):
         return data.strftime('%d/%m/%Y')
     elif isinstance(data, str):
         try:
-            # Caso a data venha no formato yyyy-mm-dd como string
             data_formatada = datetime.strptime(data, '%Y-%m-%d')
             return data_formatada.strftime('%d/%m/%Y')
         except ValueError:
-            return data  # Retorna a string original se não conseguir converter
-    return data  # Se já estiver no formato correto
+            return data
+    return data
 
 
-# Função para exportar o relatório em PDF com cores, logo, formatação de valores e data corrigida
-# Função para exportar o relatório em PDF com cores, logo, formatação de valores e data corrigida
 # Função para exportar o relatório em PDF com cores, logo, formatação de valores e data corrigida
 def exportar_para_pdf(lancamentos, nome_arquivo, titulo_relatorio):
     pdf = FPDF(orientation='L', unit='mm', format='A4')
@@ -87,7 +76,6 @@ def exportar_para_pdf(lancamentos, nome_arquivo, titulo_relatorio):
     pdf.set_font('Arial', 'B', 16)
     pdf.cell(0, 10, titulo_relatorio.upper(), ln=True, align='C')
 
-    # Espaçamento após o título
     pdf.ln(15)
 
     # Obter a data e hora atuais
@@ -95,7 +83,6 @@ def exportar_para_pdf(lancamentos, nome_arquivo, titulo_relatorio):
     pdf.set_font('Arial', 'I', 10)
     pdf.cell(0, 10, f"Data de emissão: {data_emissao}", ln=True, align='L')
 
-    # Espaçamento
     pdf.ln(5)
 
     # Definir cores e cabeçalho da tabela
@@ -104,23 +91,21 @@ def exportar_para_pdf(lancamentos, nome_arquivo, titulo_relatorio):
     pdf.set_font('Arial', 'B', 12)
 
     colunas = ["Id", "Data", "Empresa", "Atividade", "Tipo", "Valor", "Conta", "Data Vencimento"]
-    col_widths = [20, 30, 60, 60, 10, 25, 40, 25]  # Ajuste as larguras das colunas conforme necessário
+    col_widths = [20, 30, 60, 60, 10, 25, 40, 25]
 
     for col, width in zip(colunas, col_widths):
         pdf.cell(width, 10, col, border=1, align='C', fill=True)
     pdf.ln()
 
-    # Definir cor para o conteúdo
-    pdf.set_fill_color(230, 240, 255)  # Cor de fundo alternada para linhas
-    pdf.set_text_color(0, 0, 0)  # Cor do texto
+    pdf.set_fill_color(230, 240, 255)
+    pdf.set_text_color(0, 0, 0)
     pdf.set_font('Arial', '', 10)
 
     total_credito = 0.0
     total_debito = 0.0
-    fill = False  # Variável para alternar cores de fundo
+    fill = False
 
     for row in lancamentos:
-        # Garantir que todas as entradas estejam formatadas corretamente e não sejam None
         data_formatada = str(formatar_data(row.get('Data', '')) or '')
         data_vencimento_formatada = str(formatar_data(row.get('Data_Vencimento', '')) or '')
         tipo_formatado = "C" if row.get('Tipo', '').lower() == 'crédito' else "D"
@@ -135,19 +120,16 @@ def exportar_para_pdf(lancamentos, nome_arquivo, titulo_relatorio):
         pdf.cell(col_widths[7], 10, data_vencimento_formatada, border=1, align='C', fill=fill)
         pdf.ln()
 
-        # Totalização de créditos e débitos
         valor = converter_valor_para_float(row.get('Valor', 0))
         if row.get('Tipo', '').lower() == 'crédito':
             total_credito += valor
         else:
             total_debito += valor
 
-        fill = not fill  # Alterna a cor de fundo para as próximas linhas
+        fill = not fill
 
-    # Cálculo do saldo
     saldo = total_credito - total_debito
 
-    # Mostrar os totais
     pdf.ln(10)
     pdf.set_font('Arial', 'B', 12)
     pdf.cell(0, 10, f"Total Crédito: {formatar_moeda(total_credito)}", ln=True, align='L')
@@ -161,52 +143,63 @@ def exportar_para_pdf(lancamentos, nome_arquivo, titulo_relatorio):
         logging.error(f"Erro ao gerar PDF: {e}")
         messagebox.showerror("Erro", "Erro ao salvar o relatório em PDF.")
 
-# Função para buscar lançamentos por status (A Pagar, A Receber, etc.)
+
+# Atualizada para ordenar os lançamentos por data
+def buscar_lancamentos_do_banco():
+    conexao = conectar_banco()
+    if conexao is None:
+        return []
+
+    # Adiciona ORDER BY Data para ordenar pela data do lançamento
+    query = "SELECT Id, Data, Empresa, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento FROM Lancamentos ORDER BY Data"
+
+    try:
+        cursor = conexao.cursor()
+        cursor.execute(query)
+        lancamentos = cursor.fetchall()
+        return processar_lancamentos(lancamentos)
+    except sqlite3.Error as e:
+        logging.error(f"Erro ao buscar lançamentos: {e}")
+        return []
+    finally:
+        cursor.close()
+        conexao.close()
+
+# Atualizada para ordenar os lançamentos por data
 def buscar_lancamentos_por_status(status):
     conexao = conectar_banco()
     if conexao is None:
         return []
 
-    query = """
-        SELECT Id, Data, Empresa, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento 
-        FROM Lancamentos 
-        WHERE Status = ?
-        ORDER BY Data
-    """
-
+    # Adiciona ORDER BY Data para ordenar pela data do lançamento
+    query = "SELECT Id, Data, Empresa, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento FROM Lancamentos WHERE Status = ? ORDER BY Data"
+    
     try:
         cursor = conexao.cursor()
         cursor.execute(query, (status,))
         lancamentos = cursor.fetchall()
-        if not lancamentos:
-            logging.info(f"Nenhum lançamento encontrado com status {status}.")
         return processar_lancamentos(lancamentos)
-    except pyodbc.Error as e:
+    except sqlite3.Error as e:
         logging.error(f"Erro ao buscar lançamentos por status: {e}")
         return []
     finally:
         cursor.close()
         conexao.close()
 
-
-# Função para buscar lançamentos por status e conta contábil
+# Atualizada para ordenar os lançamentos por data
 def buscar_lancamentos_por_status_e_conta(status, conta):
     conexao = conectar_banco()
     if conexao is None:
         return []
 
-    query = """
-    SELECT Id, Data, Empresa, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento 
-    FROM Lancamentos 
-    WHERE Status = ? AND Conta = ?
-    ORDER BY Data
-    """
+    # Adiciona ORDER BY Data para ordenar pela data do lançamento
+    query = "SELECT Id, Data, Empresa, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento FROM Lancamentos WHERE Status = ? AND Conta = ? ORDER BY Data"
 
     try:
         cursor = conexao.cursor()
         cursor.execute(query, (status, conta))
         return processar_lancamentos(cursor.fetchall())
-    except pyodbc.Error as e:
+    except sqlite3.Error as e:
         logging.error(f"Erro ao buscar lançamentos por status e conta: {e}")
         return []
     finally:
@@ -214,15 +207,12 @@ def buscar_lancamentos_por_status_e_conta(status, conta):
         conexao.close()
 
 
-# Função para processar os lançamentos e retorná-los em um formato legível
 def processar_lancamentos(lancamentos):
     lista_lancamentos = []
     for row in lancamentos:
-        # Certifique-se de que os índices dos campos estão corretos
-        data_formatada = formatar_data(row[1])  # Data
-        data_vencimento_formatada = formatar_data(row[9])  # Data de Vencimento
+        data_formatada = formatar_data(row[1])
+        data_vencimento_formatada = formatar_data(row[9])
 
-        # Processar e preparar o lançamento em formato de dicionário
         lista_lancamentos.append({
             "Id": row[0],
             "Data": data_formatada,
@@ -237,211 +227,11 @@ def processar_lancamentos(lancamentos):
         })
     return lista_lancamentos
 
-# Função para gerar relatório geral via interface gráfica
-def gerar_relatorio_geral():
-    lancamentos = buscar_lancamentos_do_banco()
-    if not lancamentos:
-        messagebox.showinfo("Relatório Geral", "Nenhum lançamento foi registrado.")
-        return
 
-    # Perguntar o nome do arquivo ao usuário
-    nome_arquivo = askstring("Salvar Relatório", "Digite o nome do arquivo (sem extensão):")
-
-    # Verificar se o nome do arquivo foi fornecido
-    if not nome_arquivo:
-        messagebox.showwarning("Erro", "Nome do arquivo não fornecido. Relatório não será salvo.")
-        return
-
-    # Adicionar extensão .pdf ao nome do arquivo, caso não tenha sido fornecido
-    if not nome_arquivo.endswith(".pdf"):
-        nome_arquivo += ".pdf"
-
-    # Exportar para PDF com o nome fornecido
-    exportar_para_pdf(lancamentos, nome_arquivo, "Relatório Geral de Lançamentos")
-
-# Função para gerar Relatório Geral - A Pagar
-def gerar_relatorio_geral_a_pagar():
-    lancamentos = buscar_lancamentos_por_status("A Pagar")
-    if not lancamentos:
-        messagebox.showinfo("Relatório Geral - A Pagar", "Nenhum lançamento com status 'A Pagar'.")
-        return
-
-    nome_arquivo = askstring("Salvar Relatório", "Digite o nome do arquivo (sem extensão):")
-    if not nome_arquivo:
-        messagebox.showwarning("Erro", "Nome do arquivo não fornecido. Relatório não será salvo.")
-        return
-    nome_arquivo += ".pdf" if not nome_arquivo.endswith(".pdf") else ""
-
-    exportar_para_pdf(lancamentos, nome_arquivo, "Relatório Geral - A Pagar")
-
-
-# Função para gerar Relatório por Conta Contábil - A Pagar
-def gerar_relatorio_conta_a_pagar():
-    contas_contabeis = ["Exposição", "Rodeio/Show", "Venda de Espaço", "Patrocinio", "Ranch Sorting", "Team Penning"]
-
-    def filtrar_relatorio():
-        conta_escolhida = combo_conta.get().lower()
-        if conta_escolhida not in [c.lower() for c in contas_contabeis]:
-            messagebox.showwarning("Erro", "Conta contábil inválida!")
-            return
-
-        lancamentos = buscar_lancamentos_por_status_e_conta("A Pagar", conta_escolhida)
-        if not lancamentos:
-            messagebox.showinfo("Relatório por Conta - A Pagar", f"Nenhum lançamento com status 'A Pagar' para a conta {conta_escolhida}.")
-            return
-
-        nome_arquivo = f"relatorio_{conta_escolhida.replace('/', '-')}_a_pagar.pdf"
-        exportar_para_pdf(lancamentos, nome_arquivo, f"Relatório por Conta - A Pagar ({conta_escolhida})")
-
-    # Interface gráfica para selecionar a conta contábil
-    relatorio_janela = tk.Toplevel(root)
-    relatorio_janela.title("Relatório por Conta - A Pagar")
-    relatorio_janela.geometry("400x200")
-    tk.Label(relatorio_janela, text="Escolha a conta contábil:").pack(pady=10)
-
-    combo_conta = ttk.Combobox(relatorio_janela, values=contas_contabeis)
-    combo_conta.pack()
-    btn_filtrar = tk.Button(relatorio_janela, text="Gerar Relatório", command=filtrar_relatorio)
-    btn_filtrar.pack(pady=20)
-
-
-# Função para gerar Relatório Geral - A Receber
-def gerar_relatorio_geral_a_receber():
-    lancamentos = buscar_lancamentos_por_status("A Receber")
-    if not lancamentos:
-        messagebox.showinfo("Relatório Geral - A Receber", "Nenhum lançamento com status 'A Receber'.")
-        return
-
-    nome_arquivo = askstring("Salvar Relatório", "Digite o nome do arquivo (sem extensão):")
-    if not nome_arquivo:
-        messagebox.showwarning("Erro", "Nome do arquivo não fornecido. Relatório não será salvo.")
-        return
-    nome_arquivo += ".pdf" if not nome_arquivo.endswith(".pdf") else ""
-
-    exportar_para_pdf(lancamentos, nome_arquivo, "Relatório Geral - A Receber")
-
-
-# Função para gerar Relatório por Conta Contábil - A Receber
-def gerar_relatorio_conta_a_receber():
-    contas_contabeis = ["Exposição", "Rodeio/Show", "Venda de Espaço", "Patrocinio", "Ranch Sorting", "Team Penning"]
-
-    def filtrar_relatorio():
-        conta_escolhida = combo_conta.get().lower()
-        if conta_escolhida not in [c.lower() for c in contas_contabeis]:
-            messagebox.showwarning("Erro", "Conta contábil inválida!")
-            return
-
-        lancamentos = buscar_lancamentos_por_status_e_conta("A Receber", conta_escolhida)
-        if not lancamentos:
-            messagebox.showinfo("Relatório por Conta - A Receber", f"Nenhum lançamento com status 'A Receber' para a conta {conta_escolhida}.")
-            return
-
-        nome_arquivo = f"relatorio_{conta_escolhida.replace('/', '-')}_a_receber.pdf"
-        exportar_para_pdf(lancamentos, nome_arquivo, f"Relatório por Conta - A Receber ({conta_escolhida})")
-
-    # Interface gráfica para selecionar a conta contábil
-    relatorio_janela = tk.Toplevel(root)
-    relatorio_janela.title("Relatório por Conta - A Receber")
-    relatorio_janela.geometry("400x200")
-    tk.Label(relatorio_janela, text="Escolha a conta contábil:").pack(pady=10)
-
-    combo_conta = ttk.Combobox(relatorio_janela, values=contas_contabeis)
-    combo_conta.pack()
-    btn_filtrar = tk.Button(relatorio_janela, text="Gerar Relatório", command=filtrar_relatorio)
-    btn_filtrar.pack(pady=20)
-
-# Função para gerar relatório por conta contábil
-def gerar_relatorio_por_conta():
-    contas_contabeis = ["Exposição", "Rodeio/Show", "Venda de Espaço", "Patrocinio", "Ranch Sorting", "Team Penning"]
-
-    def filtrar_relatorio():
-        conta_escolhida = combo_conta.get().lower()  # Pegando a seleção do combobox e padronizando para minúsculas
-
-        # Mapear "rodeio" ou "shows" para "rodeio/show"
-        if conta_escolhida in ["rodeio", "shows"]:
-            conta_escolhida = "rodeio/show"
-
-        # Verificar se a conta é válida (inclui "rodeio/show")
-        contas_validas = [c.lower() for c in contas_contabeis] + ["rodeio/show"]
-
-        if conta_escolhida not in contas_validas:
-            messagebox.showwarning("Erro", "Conta contábil inválida!")
-            return
-
-        # Buscar lançamentos no banco
-        lancamentos = buscar_lancamentos_do_banco()
-        lancamentos_filtrados = [l for l in lancamentos if l['Conta'].lower() == conta_escolhida]
-
-        if not lancamentos_filtrados:
-            messagebox.showinfo("Relatório por Conta", f"Nenhum lançamento encontrado para a conta {conta_escolhida}.")
-            return
-
-        # Exportar para PDF
-        exportar_para_pdf(lancamentos_filtrados, f"relatorio_{conta_escolhida.replace('/', '-')}.pdf", f"Relatório para a Conta {conta_escolhida}")
-
-    # Criar a janela para filtrar o relatório por conta contábil
-    relatorio_janela = tk.Toplevel(root)
-    relatorio_janela.title("Relatório por Conta Contábil")
-    relatorio_janela.geometry("400x200")
-
-    tk.Label(relatorio_janela, text="Escolha a conta contábil:").pack(pady=10)
-
-    # Usar ComboBox em vez de campo de entrada de texto
-    combo_conta = ttk.Combobox(relatorio_janela, values=contas_contabeis)
-    combo_conta.pack()
-
-    btn_filtrar = tk.Button(relatorio_janela, text="Gerar Relatório", command=filtrar_relatorio)
-    btn_filtrar.pack(pady=20)
-
-
-# Função para buscar lançamentos do banco de dados
-def buscar_lancamentos_do_banco():
-    conexao = conectar_banco()
-    if conexao is None:
-        return []
-
-    cursor = conexao.cursor()
-    query = "SELECT Id, Data, Empresa, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento FROM Lancamentos ORDER BY Data"
-
-    try:
-        cursor.execute(query)
-        lancamentos = cursor.fetchall()
-        lista_lancamentos = []
-
-        for row in lancamentos:
-            data_formatada = formatar_data(row[1])  # Se precisar formatar a data, ajuste aqui
-            data_vencimento_formatada = formatar_data(row[9])  # Data de Vencimento também
-
-            lista_lancamentos.append({
-                "Id": row[0],
-                "Data": data_formatada,
-                "Empresa": row[2],
-                "Atividade": row[3],
-                "Observacao": row[4],
-                "Tipo": "crédito" if row[5] == "C" else "débito",
-                "Valor": row[6],
-                "Conta": row[7],
-                "Status": row[8],
-                "Data_Vencimento": data_vencimento_formatada
-            })
-
-        return lista_lancamentos
-
-    except pyodbc.Error as e:
-        logging.error(f"Erro ao buscar lançamentos: {e}")
-        messagebox.showerror("Erro", f"Erro ao buscar lançamentos: {e}")
-        return []
-    finally:
-        cursor.close()
-        conexao.close()
-
-# Função para salvar o lançamento no banco de dados
 def salvar_lancamento_no_banco(lancamento):
     conexao = conectar_banco()
     if conexao is None:
         return
-
-    cursor = conexao.cursor()
 
     query = '''
     INSERT INTO Lancamentos (Data, Empresa, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento)
@@ -449,6 +239,7 @@ def salvar_lancamento_no_banco(lancamento):
     '''
 
     try:
+        cursor = conexao.cursor()
         cursor.execute(query, (
             lancamento['Data'],
             lancamento['Empresa'],
@@ -462,20 +253,18 @@ def salvar_lancamento_no_banco(lancamento):
         ))
         conexao.commit()
         messagebox.showinfo("Sucesso", "Lançamento salvo no banco de dados com sucesso!")
-    except pyodbc.Error as e:
+    except sqlite3.Error as e:
         logging.error(f"Erro ao salvar o lançamento: {e}")
         messagebox.showerror("Erro", f"Erro ao salvar o lançamento: {e}")
     finally:
         cursor.close()
         conexao.close()
 
-# Função para atualizar o lançamento no banco de dados
+
 def atualizar_lancamento_no_banco(lancamento_id, lancamento_atualizado):
     conexao = conectar_banco()
     if conexao is None:
         return
-
-    cursor = conexao.cursor()
 
     query = '''
     UPDATE Lancamentos SET Data = ?, Empresa = ?, Atividade = ?, Observacao = ?, Tipo = ?, Valor = ?, Conta = ?, Status = ?, Data_Vencimento = ?
@@ -483,10 +272,7 @@ def atualizar_lancamento_no_banco(lancamento_id, lancamento_atualizado):
     '''
 
     try:
-        # Log para debug: registrando os valores que serão atualizados no banco de dados
-        logging.info(f"Atualizando lançamento ID {lancamento_id} com valores: {lancamento_atualizado}")
-
-        # Executar a query com os valores atualizados
+        cursor = conexao.cursor()
         cursor.execute(query, (
             lancamento_atualizado['Data'],
             lancamento_atualizado['Empresa'],
@@ -499,44 +285,35 @@ def atualizar_lancamento_no_banco(lancamento_id, lancamento_atualizado):
             lancamento_atualizado['Data_Vencimento'],
             lancamento_id
         ))
-
-        # Commitar as alterações
         conexao.commit()
-
-        # Exibir mensagem de sucesso
         messagebox.showinfo("Sucesso", "Lançamento atualizado com sucesso!")
-
-    except Exception as e:
-        # Captura e log de erro detalhado
-        logging.error(f"Erro ao atualizar o lançamento com ID {lancamento_id}: {e}")
+    except sqlite3.Error as e:
+        logging.error(f"Erro ao atualizar o lançamento: {e}")
         messagebox.showerror("Erro", f"Erro ao atualizar o lançamento: {e}")
-
     finally:
         cursor.close()
         conexao.close()
 
-# Função para excluir o lançamento no banco de dados
+
 def excluir_lancamento_no_banco(lancamento_id):
     conexao = conectar_banco()
     if conexao is None:
         return
 
-    cursor = conexao.cursor()
-
     query = "DELETE FROM Lancamentos WHERE Id = ?"
 
     try:
+        cursor = conexao.cursor()
         cursor.execute(query, (lancamento_id,))
         conexao.commit()
         messagebox.showinfo("Sucesso", "Lançamento excluído com sucesso!")
-    except Exception as e:
+    except sqlite3.Error as e:
         logging.error(f"Erro ao excluir o lançamento: {e}")
         messagebox.showerror("Erro", f"Erro ao excluir o lançamento: {e}")
     finally:
         cursor.close()
         conexao.close()
 
-# Função para adicionar lançamento via interface gráfica
 def adicionar_lancamento_tela():
     def salvar():
         data = entry_data.get()
@@ -620,7 +397,6 @@ def adicionar_lancamento_tela():
     btn_salvar = tk.Button(adicionar_janela, text="Salvar", command=salvar)
     btn_salvar.pack(pady=10)
 
-# Função para modificar lançamento via interface gráfica
 def alterar_lancamento_tela():
     def buscar_lancamento():
         lancamento_id = entry_id.get()
@@ -767,88 +543,6 @@ def alterar_lancamento_tela():
     btn_modificar = tk.Button(modificar_janela, text="Modificar", command=modificar)
     btn_modificar.pack(pady=10)
 
-# Função para buscar o lançamento por ID (esta função precisa ser implementada para interagir com o banco de dados)
-def buscar_lancamento_por_id(lancamento_id):
-    conexao = conectar_banco()  # Certifique-se de que esta função já está implementada para conectar ao banco
-    if conexao is None:
-        messagebox.showerror("Erro", "Erro ao conectar ao banco de dados.")
-        return None
-
-    cursor = conexao.cursor()
-    query = "SELECT Id, Data, Empresa, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento FROM Lancamentos WHERE Id = ?"
-
-    try:
-        cursor.execute(query, (lancamento_id,))
-        resultado = cursor.fetchone()
-
-        if resultado:
-            # Tratar o valor da data para garantir que está no formato correto
-            data_formatada = formatar_data(resultado[1])  # Formatar a data corretamente
-            data_vencimento_formatada = formatar_data(resultado[9])  # Usar índice 9 para Data de Vencimento
-
-            lancamento = {
-                'Data': data_formatada,
-                'Empresa': resultado[2],
-                'Atividade': resultado[3],
-                'Observacao': resultado[4],
-                'Tipo': resultado[5],
-                'Valor': resultado[6],
-                'Conta': resultado[7],
-                'Status': resultado[8],  # Status está correto no índice 8
-                'Data_Vencimento': data_vencimento_formatada  # Data de Vencimento está no índice 9
-            }
-            return lancamento
-        else:
-            messagebox.showinfo("Aviso", f"Lançamento com ID {lancamento_id} não encontrado.")
-            return None
-
-    except Exception as e:
-        messagebox.showerror("Erro", f"Erro ao buscar o lançamento: {e}")
-        return None
-
-    finally:
-        cursor.close()
-        conexao.close()
-
-# Função para atualizar o lançamento no banco de dados (exemplo)
-def atualizar_lancamento_no_banco(lancamento_id, lancamento_atualizado):
-    conexao = conectar_banco()  # Função para conectar ao banco de dados
-    if conexao is None:
-        messagebox.showerror("Erro", "Erro ao conectar ao banco de dados.")
-        return
-
-    cursor = conexao.cursor()
-    query = '''
-    UPDATE Lancamentos
-    SET Data = ?, Empresa = ?, Atividade = ?, Observacao = ?, Tipo = ?, Valor = ?, Conta = ?
-    WHERE Id = ?
-    '''
-
-    try:
-        # Executa a atualização no banco de dados
-        cursor.execute(query, (
-            lancamento_atualizado['Data'],
-            lancamento_atualizado['Empresa'],
-            lancamento_atualizado['Atividade'],
-            lancamento_atualizado['Observacao'],
-            lancamento_atualizado['Tipo'],
-            lancamento_atualizado['Valor'],
-            lancamento_atualizado['Conta'],
-            lancamento_id  # Certifique-se de passar o ID corretamente
-        ))
-
-        conexao.commit()  # Confirmar as alterações no banco de dados
-        messagebox.showinfo("Sucesso", f"Lançamento ID {lancamento_id} atualizado com sucesso!")
-
-    except Exception as e:
-        messagebox.showerror("Erro", f"Erro ao atualizar o lançamento: {e}")
-        conexao.rollback()  # Desfazer a transação em caso de erro
-
-    finally:
-        cursor.close()
-        conexao.close()
-
-# Função para excluir lançamento via interface gráfica
 def excluir_lancamento_tela():
     def excluir():
         lancamento_id = entry_id.get()
@@ -866,6 +560,119 @@ def excluir_lancamento_tela():
     btn_excluir = tk.Button(excluir_janela, text="Excluir", command=excluir)
     btn_excluir.pack(pady=10)
 
+def gerar_relatorio_geral():
+    lancamentos = buscar_lancamentos_do_banco()
+    if not lancamentos:
+        messagebox.showinfo("Relatório Geral", "Nenhum lançamento foi registrado.")
+        return
+
+    # Perguntar o nome do arquivo ao usuário
+    nome_arquivo = askstring("Salvar Relatório", "Digite o nome do arquivo (sem extensão):")
+
+    # Verificar se o nome do arquivo foi fornecido
+    if not nome_arquivo:
+        messagebox.showwarning("Erro", "Nome do arquivo não fornecido. Relatório não será salvo.")
+        return
+
+    # Adicionar extensão .pdf ao nome do arquivo, caso não tenha sido fornecido
+    if not nome_arquivo.endswith(".pdf"):
+        nome_arquivo += ".pdf"
+
+    # Exportar para PDF com o nome fornecido
+    exportar_para_pdf(lancamentos, nome_arquivo, "Relatório Geral de Lançamentos")
+
+# Função para gerar Relatório Geral - A Pagar
+def gerar_relatorio_geral_a_pagar():
+    lancamentos = buscar_lancamentos_por_status("A Pagar")
+    if not lancamentos:
+        messagebox.showinfo("Relatório Geral - A Pagar", "Nenhum lançamento com status 'A Pagar'.")
+        return
+
+    nome_arquivo = askstring("Salvar Relatório", "Digite o nome do arquivo (sem extensão):")
+    if not nome_arquivo:
+        messagebox.showwarning("Erro", "Nome do arquivo não fornecido. Relatório não será salvo.")
+        return
+    nome_arquivo += ".pdf" if not nome_arquivo.endswith(".pdf") else ""
+
+    exportar_para_pdf(lancamentos, nome_arquivo, "Relatório Geral - A Pagar")
+
+
+# Função para gerar Relatório por Conta Contábil - A Pagar
+def gerar_relatorio_conta_a_pagar():
+    contas_contabeis = ["Exposição", "Rodeio/Show", "Venda de Espaço", "Patrocinio", "Ranch Sorting", "Team Penning"]
+
+    def filtrar_relatorio():
+        conta_escolhida = combo_conta.get().lower()
+        if conta_escolhida not in [c.lower() for c in contas_contabeis]:
+            messagebox.showwarning("Erro", "Conta contábil inválida!")
+            return
+
+        lancamentos = buscar_lancamentos_por_status_e_conta("A Pagar", conta_escolhida)
+        if not lancamentos:
+            messagebox.showinfo("Relatório por Conta - A Pagar", f"Nenhum lançamento com status 'A Pagar' para a conta {conta_escolhida}.")
+            return
+
+        nome_arquivo = f"relatorio_{conta_escolhida.replace('/', '-')}_a_pagar.pdf"
+        exportar_para_pdf(lancamentos, nome_arquivo, f"Relatório por Conta - A Pagar ({conta_escolhida})")
+
+    # Interface gráfica para selecionar a conta contábil
+    relatorio_janela = tk.Toplevel(root)
+    relatorio_janela.title("Relatório por Conta - A Pagar")
+    relatorio_janela.geometry("400x200")
+    tk.Label(relatorio_janela, text="Escolha a conta contábil:").pack(pady=10)
+
+    combo_conta = ttk.Combobox(relatorio_janela, values=contas_contabeis)
+    combo_conta.pack()
+    btn_filtrar = tk.Button(relatorio_janela, text="Gerar Relatório", command=filtrar_relatorio)
+    btn_filtrar.pack(pady=20)
+
+
+# Função para gerar Relatório Geral - A Receber
+def gerar_relatorio_geral_a_receber():
+    lancamentos = buscar_lancamentos_por_status("A Receber")
+    if not lancamentos:
+        messagebox.showinfo("Relatório Geral - A Receber", "Nenhum lançamento com status 'A Receber'.")
+        return
+
+    nome_arquivo = askstring("Salvar Relatório", "Digite o nome do arquivo (sem extensão):")
+    if not nome_arquivo:
+        messagebox.showwarning("Erro", "Nome do arquivo não fornecido. Relatório não será salvo.")
+        return
+    nome_arquivo += ".pdf" if not nome_arquivo.endswith(".pdf") else ""
+
+    exportar_para_pdf(lancamentos, nome_arquivo, "Relatório Geral - A Receber")
+
+
+# Função para gerar Relatório por Conta Contábil - A Receber
+def gerar_relatorio_conta_a_receber():
+    contas_contabeis = ["Exposição", "Rodeio/Show", "Venda de Espaço", "Patrocinio", "Ranch Sorting", "Team Penning"]
+
+    def filtrar_relatorio():
+        conta_escolhida = combo_conta.get().lower()
+        if conta_escolhida not in [c.lower() for c in contas_contabeis]:
+            messagebox.showwarning("Erro", "Conta contábil inválida!")
+            return
+
+        lancamentos = buscar_lancamentos_por_status_e_conta("A Receber", conta_escolhida)
+        if not lancamentos:
+            messagebox.showinfo("Relatório por Conta - A Receber", f"Nenhum lançamento com status 'A Receber' para a conta {conta_escolhida}.")
+            return
+
+        nome_arquivo = f"relatorio_{conta_escolhida.replace('/', '-')}_a_receber.pdf"
+        exportar_para_pdf(lancamentos, nome_arquivo, f"Relatório por Conta - A Receber ({conta_escolhida})")
+
+    # Interface gráfica para selecionar a conta contábil
+    relatorio_janela = tk.Toplevel(root)
+    relatorio_janela.title("Relatório por Conta - A Receber")
+    relatorio_janela.geometry("400x200")
+    tk.Label(relatorio_janela, text="Escolha a conta contábil:").pack(pady=10)
+
+    combo_conta = ttk.Combobox(relatorio_janela, values=contas_contabeis)
+    combo_conta.pack()
+    btn_filtrar = tk.Button(relatorio_janela, text="Gerar Relatório", command=filtrar_relatorio)
+    btn_filtrar.pack(pady=20)
+
+import matplotlib.pyplot as plt
 
 def gerar_grafico_barras():
     conexao = conectar_banco()
@@ -873,7 +680,7 @@ def gerar_grafico_barras():
         messagebox.showerror("Erro", "Erro ao conectar ao banco de dados.")
         return
 
-    # Consulta adaptada para SQL Server para obter somas de crédito e débito por conta
+    # Consulta para obter somas de crédito e débito por conta
     query = """
         SELECT Conta, 
                SUM(CASE WHEN Tipo = 'C' THEN Valor ELSE 0 END) AS Total_Credito,
@@ -926,14 +733,98 @@ def gerar_grafico_barras():
         plt.tight_layout()
         plt.show()
 
-    except pyodbc.Error as e:
+    except sqlite3.Error as e:
         logging.error(f"Erro ao gerar gráfico de barras: {e}")
         messagebox.showerror("Erro", f"Erro ao gerar gráfico de barras: {e}")
     finally:
         cursor.close()
         conexao.close()
 
-# Função para criar a janela principal com os botões
+# Função para gerar relatório por conta contábil
+def gerar_relatorio_por_conta():
+    contas_contabeis = ["Exposição", "Rodeio/Show", "Venda de Espaço", "Patrocinio", "Ranch Sorting", "Team Penning"]
+
+    def filtrar_relatorio():
+        conta_escolhida = combo_conta.get().lower()  # Pegando a seleção do combobox e padronizando para minúsculas
+
+        # Mapear "rodeio" ou "shows" para "rodeio/show"
+        if conta_escolhida in ["rodeio", "shows"]:
+            conta_escolhida = "rodeio/show"
+
+        # Verificar se a conta é válida (inclui "rodeio/show")
+        contas_validas = [c.lower() for c in contas_contabeis] + ["rodeio/show"]
+
+        if conta_escolhida not in contas_validas:
+            messagebox.showwarning("Erro", "Conta contábil inválida!")
+            return
+
+        # Buscar lançamentos no banco
+        lancamentos = buscar_lancamentos_do_banco()
+        lancamentos_filtrados = [l for l in lancamentos if l['Conta'].lower() == conta_escolhida]
+
+        if not lancamentos_filtrados:
+            messagebox.showinfo("Relatório por Conta", f"Nenhum lançamento encontrado para a conta {conta_escolhida}.")
+            return
+
+        # Exportar para PDF
+        exportar_para_pdf(lancamentos_filtrados, f"relatorio_{conta_escolhida.replace('/', '-')}.pdf", f"Relatório para a Conta {conta_escolhida}")
+
+    # Criar a janela para filtrar o relatório por conta contábil
+    relatorio_janela = tk.Toplevel(root)
+    relatorio_janela.title("Relatório por Conta Contábil")
+    relatorio_janela.geometry("400x200")
+
+    tk.Label(relatorio_janela, text="Escolha a conta contábil:").pack(pady=10)
+
+    # Usar ComboBox em vez de campo de entrada de texto
+    combo_conta = ttk.Combobox(relatorio_janela, values=contas_contabeis)
+    combo_conta.pack()
+
+    btn_filtrar = tk.Button(relatorio_janela, text="Gerar Relatório", command=filtrar_relatorio)
+    btn_filtrar.pack(pady=20)
+
+def buscar_lancamento_por_id(lancamento_id):
+    conexao = conectar_banco()  # Certifique-se de que esta função já está implementada para conectar ao banco
+    if conexao is None:
+        messagebox.showerror("Erro", "Erro ao conectar ao banco de dados.")
+        return None
+
+    cursor = conexao.cursor()
+    query = "SELECT Id, Data, Empresa, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento FROM Lancamentos WHERE Id = ?"
+
+    try:
+        cursor.execute(query, (lancamento_id,))
+        resultado = cursor.fetchone()
+
+        if resultado:
+            # Tratar o valor da data para garantir que está no formato correto
+            data_formatada = formatar_data(resultado[1])  # Formatar a data corretamente
+            data_vencimento_formatada = formatar_data(resultado[9])  # Usar índice 9 para Data de Vencimento
+
+            lancamento = {
+                'Data': data_formatada,
+                'Empresa': resultado[2],
+                'Atividade': resultado[3],
+                'Observacao': resultado[4],
+                'Tipo': resultado[5],
+                'Valor': resultado[6],
+                'Conta': resultado[7],
+                'Status': resultado[8],  # Status está correto no índice 8
+                'Data_Vencimento': data_vencimento_formatada  # Data de Vencimento está no índice 9
+            }
+            return lancamento
+        else:
+            messagebox.showinfo("Aviso", f"Lançamento com ID {lancamento_id} não encontrado.")
+            return None
+
+    except Exception as e:
+        messagebox.showerror("Erro", f"Erro ao buscar o lançamento: {e}")
+        return None
+
+    finally:
+        cursor.close()
+        conexao.close()
+
 def criar_menu():
     global root
     root = tk.Tk()
@@ -976,6 +867,7 @@ def criar_menu():
     btn_grafico_barras = tk.Button(root, text="Visualizar Gráfico de Créditos vs Débitos", command=gerar_grafico_barras, width=30)
     btn_grafico_barras.pack(pady=10)
 
+
     # Botão para sair do sistema
     btn_sair = tk.Button(root, text="Sair", command=root.quit, width=30)
     btn_sair.pack(pady=20)
@@ -983,4 +875,4 @@ def criar_menu():
     root.mainloop()
 
 # Iniciar o menu principal
-    criar_menu()  # Inicia a interface gráfica
+criar_menu()  # Inicia a interface gráfica
