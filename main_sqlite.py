@@ -4,7 +4,6 @@ from tkinter.simpledialog import askstring
 from datetime import datetime
 import locale
 from tkinter import ttk
-import matplotlib.pyplot as plt
 import tkinter as tk
 from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
@@ -106,7 +105,7 @@ def adicionar_lancamento_tela():
 
 def alterar_lancamento_tela(lancamento_id):
     # Busca o lançamento pelo ID
-    lancamento = buscar_lancamento_por_id(lancamento_id)
+    lancamento = database.buscar_lancamento_por_id(lancamento_id)
     if not lancamento:
         messagebox.showerror("Erro", f"Lançamento com ID {lancamento_id} não encontrado.")
         return
@@ -440,58 +439,7 @@ def gerar_relatorio_por_conta():
     btn_filtrar = tk.Button(relatorio_janela, text="Gerar Relatório", command=filtrar_relatorio)
     btn_filtrar.pack(pady=20)
 
-def buscar_lancamento_por_id(lancamento_id):
-    conexao = database.conectar_banco()
-    cursor = conexao.cursor()
-    query = """
-        SELECT Id, Empresa, Data, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento
-        FROM Lancamentos WHERE Id = ?
-    """
-    cursor.execute(query, (lancamento_id,))
-    resultado = cursor.fetchone()
-    conexao.close()
-    if resultado:
-        return {
-            'Id': resultado[0],
-            'Empresa': resultado[1],
-            'Data': resultado[2],
-            'Atividade': resultado[3],
-            'Observacao': resultado[4],
-            'Tipo': resultado[5],
-            'Valor': resultado[6],
-            'Conta': resultado[7],
-            'Status': resultado[8],
-            'Data_Vencimento': resultado[9]
-        }
-    return None
 
-def buscar_todos_lancamentos():
-    # Conecta ao banco de dados
-    conexao = database.conectar_banco()
-    if conexao is None:
-        return []
-
-    cursor = conexao.cursor()
-    query = """
-        SELECT Id, Empresa, Atividade, Tipo, Conta 
-        FROM Lancamentos
-    """
-    
-    try:
-        cursor.execute(query)
-        resultados = cursor.fetchall()
-        
-        # Transformando os resultados em uma lista de dicionários
-        lancamentos = [{'Id': row[0], 'Empresa': row[1], 'Atividade': row[2], 'Tipo': row[3], "Conta": row[4]} for row in resultados]
-        return lancamentos
-    
-    except Exception as e:
-        print(f"Erro ao buscar lançamentos: {e}")
-        return []
-
-    finally:
-        cursor.close()
-        conexao.close()
 
 def abrir_tela_listagem():
     # Função para abrir a tela de listagem de lançamentos
@@ -510,7 +458,7 @@ def abrir_tela_listagem():
     def aplicar_filtro():
         # Obter o texto digitado e filtrar os lançamentos
         nome_empresa = entry_filtro.get().lower()
-        lancamentos_filtrados = [l for l in buscar_todos_lancamentos() if nome_empresa in l.get("Empresa", "").lower()]
+        lancamentos_filtrados = [l for l in database.buscar_todos_lancamentos() if nome_empresa in l.get("Empresa", "").lower()]
 
         # Limpar a Treeview antes de inserir os novos resultados
         for item in tree.get_children():
@@ -558,7 +506,7 @@ def abrir_tela_listagem():
             tree.delete(item)
         
         # Carregar os lançamentos do banco de dados e inserir na Treeview
-        lancamentos = buscar_todos_lancamentos()
+        lancamentos = database.buscar_todos_lancamentos()
         for lancamento in lancamentos:
             tree.insert("", "end", values=(
                 lancamento.get("Id", ""),

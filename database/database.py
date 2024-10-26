@@ -160,3 +160,56 @@ def excluir_lancamento_no_banco(lancamento_id):
     finally:
         cursor.close()
         conexao.close()
+
+def buscar_lancamento_por_id(lancamento_id):
+    conexao = conectar_banco()
+    cursor = conexao.cursor()
+    query = """
+        SELECT Id, Empresa, Data, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento
+        FROM Lancamentos WHERE Id = ?
+    """
+    cursor.execute(query, (lancamento_id,))
+    resultado = cursor.fetchone()
+    conexao.close()
+    if resultado:
+        return {
+            'Id': resultado[0],
+            'Empresa': resultado[1],
+            'Data': resultado[2],
+            'Atividade': resultado[3],
+            'Observacao': resultado[4],
+            'Tipo': resultado[5],
+            'Valor': resultado[6],
+            'Conta': resultado[7],
+            'Status': resultado[8],
+            'Data_Vencimento': resultado[9]
+        }
+    return None
+
+def buscar_todos_lancamentos():
+    # Conecta ao banco de dados
+    conexao = conectar_banco()
+    if conexao is None:
+        return []
+
+    cursor = conexao.cursor()
+    query = """
+        SELECT Id, Empresa, Atividade, Tipo, Conta 
+        FROM Lancamentos
+    """
+    
+    try:
+        cursor.execute(query)
+        resultados = cursor.fetchall()
+        
+        # Transformando os resultados em uma lista de dicionários
+        lancamentos = [{'Id': row[0], 'Empresa': row[1], 'Atividade': row[2], 'Tipo': row[3], "Conta": row[4]} for row in resultados]
+        return lancamentos
+    
+    except Exception as e:
+        print(f"Erro ao buscar lançamentos: {e}")
+        return []
+
+    finally:
+        cursor.close()
+        conexao.close()
