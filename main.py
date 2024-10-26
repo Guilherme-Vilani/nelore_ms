@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 
 # Configurando o logging para registrar erros
-# Configurando o logging para registrar erros
 logging.basicConfig(filename='erros_sistema_contabil.log', level=logging.ERROR,
                     format='%(asctime)s:%(levelname)s:%(message)s')
 

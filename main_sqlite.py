@@ -1,13 +1,18 @@
 import sqlite3  # Substituir pyodbc por sqlite3
 import logging
-import tkinter as tk
-from tkinter import messagebox
 from tkinter.simpledialog import askstring
-from fpdf import FPDF
 from datetime import datetime
 import locale
-import decimal
 from tkinter import ttk
+import matplotlib.pyplot as plt
+import tkinter as tk
+from tkinter import ttk, messagebox
+from PIL import Image, ImageTk
+import utils.utils as utils
+import database.database as database
+import utils.export_pdf as utilsPdf
+import services.lancamento_services as lancamentos
+import utils.relatorios as relatorios
 import matplotlib.pyplot as plt
 
 locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
@@ -15,304 +20,6 @@ locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 # Configurando o logging para registrar erros
 logging.basicConfig(filename='nelore.log', level=logging.ERROR,
                     format='%(asctime)s:%(levelname)s:%(message)s')
-
-# Função para conectar ao banco de dados SQLite
-def conectar_banco():
-    try:
-        conexao = sqlite3.connect("nelore.db")  # Nome do banco de dados SQLite
-        return conexao
-    except Exception as e:
-        logging.error(f"Erro ao conectar ao banco de dados: {e}")
-        messagebox.showerror("Erro", "Erro ao conectar ao banco de dados.")
-        return None
-
-# Função para formatar o valor em Real Brasileiro
-def formatar_moeda(valor):
-    try:
-        valor = float(valor)
-        return locale.currency(valor, grouping=True, symbol=True)
-    except ValueError:
-        return "Valor inválido"
-
-
-# Função para converter valor de string ou decimal para float (corrigido)
-def converter_valor_para_float(valor_str):
-    try:
-        if isinstance(valor_str, (float, int, decimal.Decimal)):
-            return float(valor_str)
-        valor_str = valor_str.replace('.', '').replace(',', '.')
-        return float(valor_str)
-    except (ValueError, AttributeError):
-        return None
-
-
-# Função para formatar a data para o formato dd/mm/yyyy
-def formatar_data(data):
-    if isinstance(data, datetime):
-        return data.strftime('%d/%m/%Y')
-    elif isinstance(data, str):
-        try:
-            data_formatada = datetime.strptime(data, '%Y-%m-%d')
-            return data_formatada.strftime('%d/%m/%Y')
-        except ValueError:
-            return data
-    return data
-
-
-# Função para exportar o relatório em PDF com cores, logo, formatação de valores e data corrigida
-def exportar_para_pdf(lancamentos, nome_arquivo, titulo_relatorio):
-    pdf = FPDF(orientation='L', unit='mm', format='A4')
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-
-    # Adicionar o logotipo
-    caminho_logo = r'logo.jpg'
-    try:
-        pdf.image(caminho_logo, x=10, y=8, w=30)
-    except:
-        logging.error(f"Erro ao carregar logotipo para o relatório.")
-
-    # Título do relatório
-    pdf.set_font('Arial', 'B', 16)
-    pdf.cell(0, 10, titulo_relatorio.upper(), ln=True, align='C')
-
-    pdf.ln(15)
-
-    # Obter a data e hora atuais
-    data_emissao = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-    pdf.set_font('Arial', 'I', 10)
-    pdf.cell(0, 10, f"Data de emissão: {data_emissao}", ln=True, align='L')
-
-    pdf.ln(5)
-
-    # Definir cores e cabeçalho da tabela
-    pdf.set_fill_color(200, 220, 255)
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font('Arial', 'B', 12)
-
-    colunas = ["Id", "Data", "Empresa", "Atividade", "Tipo", "Valor", "Conta", "Data Vencimento"]
-    col_widths = [20, 30, 60, 60, 10, 25, 40, 25]
-
-    for col, width in zip(colunas, col_widths):
-        pdf.cell(width, 10, col, border=1, align='C', fill=True)
-    pdf.ln()
-
-    pdf.set_fill_color(230, 240, 255)
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font('Arial', '', 10)
-
-    total_credito = 0.0
-    total_debito = 0.0
-    fill = False
-
-    for row in lancamentos:
-        data_formatada = str(formatar_data(row.get('Data', '')) or '')
-        data_vencimento_formatada = str(formatar_data(row.get('Data_Vencimento', '')) or '')
-        tipo_formatado = "C" if row.get('Tipo', '').lower() == 'crédito' else "D"
-
-        pdf.cell(col_widths[0], 10, str(row.get('Id', '')), border=1, align='C', fill=fill)
-        pdf.cell(col_widths[1], 10, data_formatada, border=1, align='C', fill=fill)
-        pdf.cell(col_widths[2], 10, str(row.get('Empresa', '')), border=1, align='C', fill=fill)
-        pdf.cell(col_widths[3], 10, str(row.get('Atividade', '')), border=1, align='C', fill=fill)
-        pdf.cell(col_widths[4], 10, tipo_formatado, border=1, align='C', fill=fill)
-        pdf.cell(col_widths[5], 10, formatar_moeda(row.get('Valor', 0)).replace('R$', 'R$ '), border=1, align='C', fill=fill)
-        pdf.cell(col_widths[6], 10, str(row.get('Conta', '')), border=1, align='C', fill=fill)
-        pdf.cell(col_widths[7], 10, data_vencimento_formatada, border=1, align='C', fill=fill)
-        pdf.ln()
-
-        valor = converter_valor_para_float(row.get('Valor', 0))
-        if row.get('Tipo', '').lower() == 'crédito':
-            total_credito += valor
-        else:
-            total_debito += valor
-
-        fill = not fill
-
-    saldo = total_credito - total_debito
-
-    pdf.ln(10)
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 10, f"Total Crédito: {formatar_moeda(total_credito)}", ln=True, align='L')
-    pdf.cell(0, 10, f"Total Débito: {formatar_moeda(total_debito)}", ln=True, align='L')
-    pdf.cell(0, 10, f"Saldo: {formatar_moeda(saldo)}", ln=True, align='L')
-
-    try:
-        pdf.output(nome_arquivo)
-        messagebox.showinfo("Sucesso", f"Relatório salvo como {nome_arquivo}")
-    except Exception as e:
-        logging.error(f"Erro ao gerar PDF: {e}")
-        messagebox.showerror("Erro", "Erro ao salvar o relatório em PDF.")
-
-
-# Atualizada para ordenar os lançamentos por data
-def buscar_lancamentos_do_banco():
-    conexao = conectar_banco()
-    if conexao is None:
-        return []
-
-    # Adiciona ORDER BY Data para ordenar pela data do lançamento
-    query = "SELECT Id, Data, Empresa, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento FROM Lancamentos ORDER BY Data"
-
-    try:
-        cursor = conexao.cursor()
-        cursor.execute(query)
-        lancamentos = cursor.fetchall()
-        return processar_lancamentos(lancamentos)
-    except sqlite3.Error as e:
-        logging.error(f"Erro ao buscar lançamentos: {e}")
-        return []
-    finally:
-        cursor.close()
-        conexao.close()
-
-# Atualizada para ordenar os lançamentos por data
-def buscar_lancamentos_por_status(status):
-    conexao = conectar_banco()
-    if conexao is None:
-        return []
-
-    # Adiciona ORDER BY Data para ordenar pela data do lançamento
-    query = "SELECT Id, Data, Empresa, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento FROM Lancamentos WHERE Status = ? ORDER BY Data"
-    
-    try:
-        cursor = conexao.cursor()
-        cursor.execute(query, (status,))
-        lancamentos = cursor.fetchall()
-        return processar_lancamentos(lancamentos)
-    except sqlite3.Error as e:
-        logging.error(f"Erro ao buscar lançamentos por status: {e}")
-        return []
-    finally:
-        cursor.close()
-        conexao.close()
-
-# Atualizada para ordenar os lançamentos por data
-def buscar_lancamentos_por_status_e_conta(status, conta):
-    conexao = conectar_banco()
-    if conexao is None:
-        return []
-
-    # Adiciona ORDER BY Data para ordenar pela data do lançamento
-    query = "SELECT Id, Data, Empresa, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento FROM Lancamentos WHERE Status = ? AND Conta = ? ORDER BY Data"
-
-    try:
-        cursor = conexao.cursor()
-        cursor.execute(query, (status, conta))
-        return processar_lancamentos(cursor.fetchall())
-    except sqlite3.Error as e:
-        logging.error(f"Erro ao buscar lançamentos por status e conta: {e}")
-        return []
-    finally:
-        cursor.close()
-        conexao.close()
-
-
-def processar_lancamentos(lancamentos):
-    lista_lancamentos = []
-    for row in lancamentos:
-        data_formatada = formatar_data(row[1])
-        data_vencimento_formatada = formatar_data(row[9])
-
-        lista_lancamentos.append({
-            "Id": row[0],
-            "Data": data_formatada,
-            "Empresa": row[2],
-            "Atividade": row[3],
-            "Observacao": row[4],
-            "Tipo": "crédito" if row[5] == "C" else "débito",
-            "Valor": row[6],
-            "Conta": row[7],
-            "Status": row[8],
-            "Data_Vencimento": data_vencimento_formatada
-        })
-    return lista_lancamentos
-
-
-def salvar_lancamento_no_banco(lancamento):
-    conexao = conectar_banco()
-    if conexao is None:
-        return
-
-    query = '''
-    INSERT INTO Lancamentos (Data, Empresa, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    '''
-
-    try:
-        cursor = conexao.cursor()
-        cursor.execute(query, (
-            lancamento['Data'],
-            lancamento['Empresa'],
-            lancamento['Atividade'],
-            lancamento['Observacao'],
-            lancamento['Tipo'],
-            lancamento['Valor'],
-            lancamento['Conta'],
-            lancamento['Status'],
-            lancamento['Data_Vencimento']
-        ))
-        conexao.commit()
-        messagebox.showinfo("Sucesso", "Lançamento salvo no banco de dados com sucesso!")
-    except sqlite3.Error as e:
-        logging.error(f"Erro ao salvar o lançamento: {e}")
-        messagebox.showerror("Erro", f"Erro ao salvar o lançamento: {e}")
-    finally:
-        cursor.close()
-        conexao.close()
-
-
-def atualizar_lancamento_no_banco(lancamento_id, lancamento_atualizado):
-    conexao = conectar_banco()
-    if conexao is None:
-        return
-
-    query = '''
-    UPDATE Lancamentos SET Data = ?, Empresa = ?, Atividade = ?, Observacao = ?, Tipo = ?, Valor = ?, Conta = ?, Status = ?, Data_Vencimento = ?
-    WHERE Id = ?
-    '''
-
-    try:
-        cursor = conexao.cursor()
-        cursor.execute(query, (
-            lancamento_atualizado['Data'],
-            lancamento_atualizado['Empresa'],
-            lancamento_atualizado['Atividade'],
-            lancamento_atualizado['Observacao'],
-            lancamento_atualizado['Tipo'],
-            lancamento_atualizado['Valor'],
-            lancamento_atualizado['Conta'],
-            lancamento_atualizado['Status'],
-            lancamento_atualizado['Data_Vencimento'],
-            lancamento_id
-        ))
-        conexao.commit()
-        messagebox.showinfo("Sucesso", "Lançamento atualizado com sucesso!")
-    except sqlite3.Error as e:
-        logging.error(f"Erro ao atualizar o lançamento: {e}")
-        messagebox.showerror("Erro", f"Erro ao atualizar o lançamento: {e}")
-    finally:
-        cursor.close()
-        conexao.close()
-
-
-def excluir_lancamento_no_banco(lancamento_id):
-    conexao = conectar_banco()
-    if conexao is None:
-        return
-
-    query = "DELETE FROM Lancamentos WHERE Id = ?"
-
-    try:
-        cursor = conexao.cursor()
-        cursor.execute(query, (lancamento_id,))
-        conexao.commit()
-        messagebox.showinfo("Sucesso", "Lançamento excluído com sucesso!")
-    except sqlite3.Error as e:
-        logging.error(f"Erro ao excluir o lançamento: {e}")
-        messagebox.showerror("Erro", f"Erro ao excluir o lançamento: {e}")
-    finally:
-        cursor.close()
-        conexao.close()
 
 def adicionar_lancamento_tela():
     def salvar():
@@ -345,7 +52,7 @@ def adicionar_lancamento_tela():
             'Data_Vencimento': data_vencimento_formatada  # Novo campo Data_Vencimento
         }
 
-        salvar_lancamento_no_banco(lancamento)
+        database.salvar_lancamento_no_banco(lancamento)
         adicionar_janela.destroy()
 
     adicionar_janela = tk.Toplevel(root)
@@ -397,78 +104,112 @@ def adicionar_lancamento_tela():
     btn_salvar = tk.Button(adicionar_janela, text="Salvar", command=salvar)
     btn_salvar.pack(pady=10)
 
-def alterar_lancamento_tela():
-    def buscar_lancamento():
-        lancamento_id = entry_id.get()
+def alterar_lancamento_tela(lancamento_id):
+    # Busca o lançamento pelo ID
+    lancamento = buscar_lancamento_por_id(lancamento_id)
+    if not lancamento:
+        messagebox.showerror("Erro", f"Lançamento com ID {lancamento_id} não encontrado.")
+        return
+    
+    data_original = lancamento.get('Data', '')
+    try:
+        data_formatada = datetime.strptime(data_original, '%Y-%m-%d').strftime('%d/%m/%Y')
+    except ValueError:
+        data_formatada = data_original  # Caso a data não esteja no formato esperado
 
-        if not lancamento_id.isdigit():
-            messagebox.showwarning("Erro", "Por favor, insira um ID válido.")
-            return
+    # Converte a data de vencimento para o formato dd/mm/yyyy
+    data_vencimento_original = lancamento.get('Data_Vencimento', '')
+    try:
+        data_vencimento_formatada = datetime.strptime(data_vencimento_original, '%Y-%m-%d').strftime('%d/%m/%Y')
+    except ValueError:
+        data_vencimento_formatada = data_vencimento_original 
 
-        # Função que busca o lançamento no banco de dados
-        lancamento = buscar_lancamento_por_id(lancamento_id)
+    # Cria a janela de edição
+    modificar_janela = tk.Toplevel(root)
+    modificar_janela.title("Modificar Lançamento")
+    modificar_janela.geometry("550x550")
 
-        if lancamento:
-            # Preencher os campos com os dados do lançamento existente
-            entry_data.delete(0, tk.END)
-            entry_data.insert(0, str(lancamento.get('Data', '')))
+    # Campos para exibir e modificar o lançamento
+    tk.Label(modificar_janela, text="ID do Lançamento:").pack()
+    entry_id = tk.Entry(modificar_janela, width=30)
+    entry_id.insert(0, str(lancamento_id))
+    entry_id.config(state="disabled")  # ID não deve ser editado
+    entry_id.pack()
 
-            entry_empresa.delete(0, tk.END)
-            entry_empresa.insert(0, str(lancamento.get('Empresa', '')))
+    tk.Label(modificar_janela, text="Nova Data (dd/mm/yyyy):").pack()
+    entry_data = tk.Entry(modificar_janela, width=30)
+    entry_data.insert(0, data_formatada)
+    entry_data.pack()
 
-            entry_atividade.delete(0, tk.END)
-            entry_atividade.insert(0, str(lancamento.get('Atividade', '')))
+    tk.Label(modificar_janela, text="Nova Empresa:").pack()
+    entry_empresa = tk.Entry(modificar_janela, width=30)
+    entry_empresa.insert(0, str(lancamento.get('Empresa', '')))
+    entry_empresa.pack()
 
-            entry_observacao.delete(0, tk.END)
-            entry_observacao.insert(0, str(lancamento.get('Observacao', '')))
+    tk.Label(modificar_janela, text="Nova Atividade:").pack()
+    entry_atividade = tk.Entry(modificar_janela, width=30)
+    entry_atividade.insert(0, str(lancamento.get('Atividade', '')))
+    entry_atividade.pack()
 
-            entry_tipo.delete(0, tk.END)
-            entry_tipo.insert(0, str(lancamento.get('Tipo', '')))
+    tk.Label(modificar_janela, text="Nova Observacao:").pack()
+    entry_observacao = tk.Entry(modificar_janela, width=30)
+    entry_observacao.insert(0, str(lancamento.get('Observacao', '')))
+    entry_observacao.pack()
 
-            entry_valor.delete(0, tk.END)
-            entry_valor.insert(0, str(lancamento.get('Valor', 0.0)))
+    tk.Label(modificar_janela, text="Novo Tipo (C/D):").pack()
+    entry_tipo = tk.Entry(modificar_janela, width=30)
+    entry_tipo.insert(0, str(lancamento.get('Tipo', '')))
+    entry_tipo.pack()
 
-            entry_conta.delete(0, tk.END)
-            entry_conta.insert(0, str(lancamento.get('Conta', '')))
+    tk.Label(modificar_janela, text="Novo Valor:").pack()
+    entry_valor = tk.Entry(modificar_janela, width=30)
+    entry_valor.insert(0, str(lancamento.get('Valor', 0.0)))
+    entry_valor.pack()
 
-            combo_status.set(str(lancamento.get('Status', '')))  # Preencher o ComboBox com o status atual
+    # ComboBox para Conta Contábil
+    tk.Label(modificar_janela, text="Nova Conta Contábil:").pack()
+    contas_contabeis = ["Exposição", "Rodeio/Show", "Venda de Espaço", "Patrocinio", "Ranch Sorting", "Team Penning"]
+    entry_conta = ttk.Combobox(modificar_janela, values=contas_contabeis, width=30)
+    entry_conta.set(str(lancamento.get('Conta', '')))
+    entry_conta.pack()
 
-            entry_data_vencimento.delete(0, tk.END)
-            entry_data_vencimento.insert(0, str(lancamento.get('Data_Vencimento', '')))
-        else:
-            messagebox.showwarning("Erro", "Lançamento não encontrado!")
+    # ComboBox para Status
+    tk.Label(modificar_janela, text="Status:").pack()
+    opcoes_status = ["A receber", "A pagar", "Pago"]
+    combo_status = ttk.Combobox(modificar_janela, values=opcoes_status, width=30)
+    combo_status.set(str(lancamento.get('Status', '')))
+    combo_status.pack()
 
-    def modificar():
-        lancamento_id = entry_id.get()
+    # Campo para Data de Vencimento
+    tk.Label(modificar_janela, text="Nova Data de Vencimento (dd/mm/yyyy):").pack()
+    entry_data_vencimento = tk.Entry(modificar_janela, width=30)
+    entry_data_vencimento.insert(0, data_vencimento_formatada)
+    entry_data_vencimento.pack()
+
+    # Função para salvar as modificações
+    def salvar_alteracoes():
         nova_empresa = entry_empresa.get()
         novo_valor = entry_valor.get()
-
         # Validação da data
         try:
-            # Formatar a data do campo para o formato YYYY-MM-DD
             data_formatada = datetime.strptime(entry_data.get(), '%d/%m/%Y').strftime('%Y-%m-%d')
         except ValueError:
             messagebox.showwarning("Erro", "Data inválida! Use o formato dd/mm/yyyy.")
             return
 
-        # Validação do tipo de transação (C para crédito, D para débito)
         tipo = entry_tipo.get().upper()
         if tipo not in ['C', 'D']:
             messagebox.showwarning("Erro", "Tipo inválido! Use 'C' para crédito ou 'D' para débito.")
             return
 
-        # Pegar o valor do ComboBox de Status
         novo_status = combo_status.get()
 
-        # Validação da data de vencimento
         try:
-            # Formatar a data de vencimento para o formato YYYY-MM-DD
             data_vencimento_formatada = datetime.strptime(entry_data_vencimento.get(), '%d/%m/%Y').strftime('%Y-%m-%d')
         except ValueError:
             messagebox.showwarning("Erro", "Data de Vencimento inválida! Use o formato dd/mm/yyyy.")
             return
 
-        # Montar o dicionário com os dados atualizados
         lancamento_atualizado = {
             'Data': data_formatada,
             'Empresa': nova_empresa,
@@ -477,76 +218,31 @@ def alterar_lancamento_tela():
             'Tipo': tipo,
             'Valor': float(novo_valor.replace(',', '.')),
             'Conta': entry_conta.get(),
-            'Status': novo_status,  # Adicionar o Status atualizado
-            'Data_Vencimento': data_vencimento_formatada  # Adicionar Data de Vencimento atualizada
+            'Status': novo_status,
+            'Data_Vencimento': data_vencimento_formatada
         }
 
-        print(lancamento_atualizado)
-
-        # Função que realiza a atualização no banco de dados
-        atualizar_lancamento_no_banco(lancamento_id, lancamento_atualizado)
+        database.atualizar_lancamento_no_banco(lancamento_id, lancamento_atualizado)
+        messagebox.showinfo("Sucesso", "Lançamento atualizado com sucesso!")
         modificar_janela.destroy()
 
-    modificar_janela = tk.Toplevel(root)
-    modificar_janela.title("Modificar Lançamento")
-    modificar_janela.geometry("550x550")
-
-    # ID do Lançamento
-    tk.Label(modificar_janela, text="ID do Lançamento:").pack()
-    entry_id = tk.Entry(modificar_janela)
-    entry_id.pack()
-
-    btn_buscar = tk.Button(modificar_janela, text="Buscar", command=buscar_lancamento)
-    btn_buscar.pack(pady=10)
-
-    # Campos para modificar o lançamento
-    tk.Label(modificar_janela, text="Nova Data (dd/mm/yyyy):").pack()
-    entry_data = tk.Entry(modificar_janela)
-    entry_data.pack()
-
-    tk.Label(modificar_janela, text="Nova Empresa:").pack()
-    entry_empresa = tk.Entry(modificar_janela)
-    entry_empresa.pack()
-
-    tk.Label(modificar_janela, text="Nova Atividade:").pack()
-    entry_atividade = tk.Entry(modificar_janela)
-    entry_atividade.pack()
-
-    tk.Label(modificar_janela, text="Nova Observacao:").pack()
-    entry_observacao = tk.Entry(modificar_janela)
-    entry_observacao.pack()
-
-    tk.Label(modificar_janela, text="Novo Tipo (C/D):").pack()
-    entry_tipo = tk.Entry(modificar_janela)
-    entry_tipo.pack()
-
-    tk.Label(modificar_janela, text="Novo Valor:").pack()
-    entry_valor = tk.Entry(modificar_janela)
-    entry_valor.pack()
-
-    tk.Label(modificar_janela, text="Nova Conta Contábil:").pack()
-    opcoes_status = ["Exposição", "Rodeio/Show", "Venda de Espaço", "Patrocinio", "Ranch Sorting", "Team Penning"]
-    entry_conta = ttk.Combobox(modificar_janela, values=opcoes_status)
-    entry_conta.pack()
-
-    # ComboBox para Status
-    tk.Label(modificar_janela, text="Status:").pack()
-    opcoes_status = ["A receber", "A Pagar", "Pago"]
-    combo_status = ttk.Combobox(modificar_janela, values=opcoes_status)
-    combo_status.pack()
-
-    # Campo para Data de Vencimento
-    tk.Label(modificar_janela, text="Nova Data de Vencimento (dd/mm/yyyy):").pack()
-    entry_data_vencimento = tk.Entry(modificar_janela)
-    entry_data_vencimento.pack()
-
-    btn_modificar = tk.Button(modificar_janela, text="Modificar", command=modificar)
+    btn_modificar = tk.Button(modificar_janela, text="Salvar Modificações", command=salvar_alteracoes)
     btn_modificar.pack(pady=10)
+
+def editar_lancamento():
+    global tree
+    selected_item = tree.selection()
+    if selected_item:
+        item = tree.item(selected_item)
+        lancamento_id = item["values"][0]
+        alterar_lancamento_tela(lancamento_id)  # Passa o lancamento_id para a função
+    else:
+        messagebox.showwarning("Aviso", "Por favor, selecione um lançamento para editar.")
 
 def excluir_lancamento_tela():
     def excluir():
         lancamento_id = entry_id.get()
-        excluir_lancamento_no_banco(lancamento_id)
+        database.excluir_lancamento_no_banco(lancamento_id)
         excluir_janela.destroy()
 
     excluir_janela = tk.Toplevel(root)
@@ -560,43 +256,6 @@ def excluir_lancamento_tela():
     btn_excluir = tk.Button(excluir_janela, text="Excluir", command=excluir)
     btn_excluir.pack(pady=10)
 
-def gerar_relatorio_geral():
-    lancamentos = buscar_lancamentos_do_banco()
-    if not lancamentos:
-        messagebox.showinfo("Relatório Geral", "Nenhum lançamento foi registrado.")
-        return
-
-    # Perguntar o nome do arquivo ao usuário
-    nome_arquivo = askstring("Salvar Relatório", "Digite o nome do arquivo (sem extensão):")
-
-    # Verificar se o nome do arquivo foi fornecido
-    if not nome_arquivo:
-        messagebox.showwarning("Erro", "Nome do arquivo não fornecido. Relatório não será salvo.")
-        return
-
-    # Adicionar extensão .pdf ao nome do arquivo, caso não tenha sido fornecido
-    if not nome_arquivo.endswith(".pdf"):
-        nome_arquivo += ".pdf"
-
-    # Exportar para PDF com o nome fornecido
-    exportar_para_pdf(lancamentos, nome_arquivo, "Relatório Geral de Lançamentos")
-
-# Função para gerar Relatório Geral - A Pagar
-def gerar_relatorio_geral_a_pagar():
-    lancamentos = buscar_lancamentos_por_status("A Pagar")
-    if not lancamentos:
-        messagebox.showinfo("Relatório Geral - A Pagar", "Nenhum lançamento com status 'A Pagar'.")
-        return
-
-    nome_arquivo = askstring("Salvar Relatório", "Digite o nome do arquivo (sem extensão):")
-    if not nome_arquivo:
-        messagebox.showwarning("Erro", "Nome do arquivo não fornecido. Relatório não será salvo.")
-        return
-    nome_arquivo += ".pdf" if not nome_arquivo.endswith(".pdf") else ""
-
-    exportar_para_pdf(lancamentos, nome_arquivo, "Relatório Geral - A Pagar")
-
-
 # Função para gerar Relatório por Conta Contábil - A Pagar
 def gerar_relatorio_conta_a_pagar():
     contas_contabeis = ["Exposição", "Rodeio/Show", "Venda de Espaço", "Patrocinio", "Ranch Sorting", "Team Penning"]
@@ -607,13 +266,13 @@ def gerar_relatorio_conta_a_pagar():
             messagebox.showwarning("Erro", "Conta contábil inválida!")
             return
 
-        lancamentos = buscar_lancamentos_por_status_e_conta("A Pagar", conta_escolhida)
+        lancamentos = database.buscar_lancamentos_por_status_e_conta("A Pagar", conta_escolhida)
         if not lancamentos:
             messagebox.showinfo("Relatório por Conta - A Pagar", f"Nenhum lançamento com status 'A Pagar' para a conta {conta_escolhida}.")
             return
 
         nome_arquivo = f"relatorio_{conta_escolhida.replace('/', '-')}_a_pagar.pdf"
-        exportar_para_pdf(lancamentos, nome_arquivo, f"Relatório por Conta - A Pagar ({conta_escolhida})")
+        utilsPdf.exportar_para_pdf(lancamentos, nome_arquivo, f"Relatório por Conta - A Pagar ({conta_escolhida})")
 
     # Interface gráfica para selecionar a conta contábil
     relatorio_janela = tk.Toplevel(root)
@@ -629,7 +288,7 @@ def gerar_relatorio_conta_a_pagar():
 
 # Função para gerar Relatório Geral - A Receber
 def gerar_relatorio_geral_a_receber():
-    lancamentos = buscar_lancamentos_por_status("A Receber")
+    lancamentos = database.buscar_lancamentos_por_status("A Receber")
     if not lancamentos:
         messagebox.showinfo("Relatório Geral - A Receber", "Nenhum lançamento com status 'A Receber'.")
         return
@@ -640,7 +299,7 @@ def gerar_relatorio_geral_a_receber():
         return
     nome_arquivo += ".pdf" if not nome_arquivo.endswith(".pdf") else ""
 
-    exportar_para_pdf(lancamentos, nome_arquivo, "Relatório Geral - A Receber")
+    utilsPdf.exportar_para_pdf(lancamentos, nome_arquivo, "Relatório Geral - A Receber")
 
 
 # Função para gerar Relatório por Conta Contábil - A Receber
@@ -653,13 +312,13 @@ def gerar_relatorio_conta_a_receber():
             messagebox.showwarning("Erro", "Conta contábil inválida!")
             return
 
-        lancamentos = buscar_lancamentos_por_status_e_conta("A Receber", conta_escolhida)
+        lancamentos = database.buscar_lancamentos_por_status_e_conta("A Receber", conta_escolhida)
         if not lancamentos:
             messagebox.showinfo("Relatório por Conta - A Receber", f"Nenhum lançamento com status 'A Receber' para a conta {conta_escolhida}.")
             return
 
         nome_arquivo = f"relatorio_{conta_escolhida.replace('/', '-')}_a_receber.pdf"
-        exportar_para_pdf(lancamentos, nome_arquivo, f"Relatório por Conta - A Receber ({conta_escolhida})")
+        utilsPdf.exportar_para_pdf(lancamentos, nome_arquivo, f"Relatório por Conta - A Receber ({conta_escolhida})")
 
     # Interface gráfica para selecionar a conta contábil
     relatorio_janela = tk.Toplevel(root)
@@ -672,10 +331,8 @@ def gerar_relatorio_conta_a_receber():
     btn_filtrar = tk.Button(relatorio_janela, text="Gerar Relatório", command=filtrar_relatorio)
     btn_filtrar.pack(pady=20)
 
-import matplotlib.pyplot as plt
-
 def gerar_grafico_barras():
-    conexao = conectar_banco()
+    conexao = database.conectar_banco()
     if conexao is None:
         messagebox.showerror("Erro", "Erro ao conectar ao banco de dados.")
         return
@@ -759,7 +416,7 @@ def gerar_relatorio_por_conta():
             return
 
         # Buscar lançamentos no banco
-        lancamentos = buscar_lancamentos_do_banco()
+        lancamentos = database.buscar_lancamentos_do_banco()
         lancamentos_filtrados = [l for l in lancamentos if l['Conta'].lower() == conta_escolhida]
 
         if not lancamentos_filtrados:
@@ -767,7 +424,7 @@ def gerar_relatorio_por_conta():
             return
 
         # Exportar para PDF
-        exportar_para_pdf(lancamentos_filtrados, f"relatorio_{conta_escolhida.replace('/', '-')}.pdf", f"Relatório para a Conta {conta_escolhida}")
+        utilsPdf.exportar_para_pdf(lancamentos_filtrados, f"relatorio_{conta_escolhida.replace('/', '-')}.pdf", f"Relatório para a Conta {conta_escolhida}")
 
     # Criar a janela para filtrar o relatório por conta contábil
     relatorio_janela = tk.Toplevel(root)
@@ -784,46 +441,182 @@ def gerar_relatorio_por_conta():
     btn_filtrar.pack(pady=20)
 
 def buscar_lancamento_por_id(lancamento_id):
-    conexao = conectar_banco()  # Certifique-se de que esta função já está implementada para conectar ao banco
+    conexao = database.conectar_banco()
+    cursor = conexao.cursor()
+    query = """
+        SELECT Id, Empresa, Data, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento
+        FROM Lancamentos WHERE Id = ?
+    """
+    cursor.execute(query, (lancamento_id,))
+    resultado = cursor.fetchone()
+    conexao.close()
+    if resultado:
+        return {
+            'Id': resultado[0],
+            'Empresa': resultado[1],
+            'Data': resultado[2],
+            'Atividade': resultado[3],
+            'Observacao': resultado[4],
+            'Tipo': resultado[5],
+            'Valor': resultado[6],
+            'Conta': resultado[7],
+            'Status': resultado[8],
+            'Data_Vencimento': resultado[9]
+        }
+    return None
+
+def buscar_todos_lancamentos():
+    # Conecta ao banco de dados
+    conexao = database.conectar_banco()
     if conexao is None:
-        messagebox.showerror("Erro", "Erro ao conectar ao banco de dados.")
-        return None
+        return []
 
     cursor = conexao.cursor()
-    query = "SELECT Id, Data, Empresa, Atividade, Observacao, Tipo, Valor, Conta, Status, Data_Vencimento FROM Lancamentos WHERE Id = ?"
-
+    query = """
+        SELECT Id, Empresa, Atividade, Tipo, Conta 
+        FROM Lancamentos
+    """
+    
     try:
-        cursor.execute(query, (lancamento_id,))
-        resultado = cursor.fetchone()
-
-        if resultado:
-            # Tratar o valor da data para garantir que está no formato correto
-            data_formatada = formatar_data(resultado[1])  # Formatar a data corretamente
-            data_vencimento_formatada = formatar_data(resultado[9])  # Usar índice 9 para Data de Vencimento
-
-            lancamento = {
-                'Data': data_formatada,
-                'Empresa': resultado[2],
-                'Atividade': resultado[3],
-                'Observacao': resultado[4],
-                'Tipo': resultado[5],
-                'Valor': resultado[6],
-                'Conta': resultado[7],
-                'Status': resultado[8],  # Status está correto no índice 8
-                'Data_Vencimento': data_vencimento_formatada  # Data de Vencimento está no índice 9
-            }
-            return lancamento
-        else:
-            messagebox.showinfo("Aviso", f"Lançamento com ID {lancamento_id} não encontrado.")
-            return None
-
+        cursor.execute(query)
+        resultados = cursor.fetchall()
+        
+        # Transformando os resultados em uma lista de dicionários
+        lancamentos = [{'Id': row[0], 'Empresa': row[1], 'Atividade': row[2], 'Tipo': row[3], "Conta": row[4]} for row in resultados]
+        return lancamentos
+    
     except Exception as e:
-        messagebox.showerror("Erro", f"Erro ao buscar o lançamento: {e}")
-        return None
+        print(f"Erro ao buscar lançamentos: {e}")
+        return []
 
     finally:
         cursor.close()
         conexao.close()
+
+def abrir_tela_listagem():
+    # Função para abrir a tela de listagem de lançamentos
+    listagem_janela = tk.Toplevel()
+    listagem_janela.title("Listagem de Lançamentos")
+    listagem_janela.geometry("700x400")
+
+    # Campo de entrada e botão de filtro
+    filtro_frame = tk.Frame(listagem_janela)
+    filtro_frame.pack(pady=10)
+
+    tk.Label(filtro_frame, text="Filtrar por Empresa:").pack(side=tk.LEFT)
+    entry_filtro = tk.Entry(filtro_frame, width=30)
+    entry_filtro.pack(side=tk.LEFT, padx=5)
+
+    def aplicar_filtro():
+        # Obter o texto digitado e filtrar os lançamentos
+        nome_empresa = entry_filtro.get().lower()
+        lancamentos_filtrados = [l for l in buscar_todos_lancamentos() if nome_empresa in l.get("Empresa", "").lower()]
+
+        # Limpar a Treeview antes de inserir os novos resultados
+        for item in tree.get_children():
+            tree.delete(item)
+
+        # Inserir os dados filtrados na Treeview
+        for lancamento in lancamentos_filtrados:
+            tree.insert("", "end", values=(
+                lancamento.get("Id", ""),
+                lancamento.get("Empresa", ""),
+                lancamento.get("Atividade", ""),
+                lancamento.get("Tipo", ""),
+                lancamento.get("Conta", "")
+            ))
+
+    btn_filtro = tk.Button(filtro_frame, text="Filtrar", command=aplicar_filtro)
+    btn_filtro.pack(side=tk.LEFT, padx=5)
+
+    # Configura a Treeview com colunas adicionais
+    colunas = ("Id", "Empresa", "Atividade", "Tipo", "Conta")
+    tree = ttk.Treeview(listagem_janela, columns=colunas, show="headings")
+
+    # Configura cada coluna com um nome e largura específica
+    tree.heading("Id", text="ID")
+    tree.column("Id", width=25)  # Largura menor para o ID
+
+    tree.heading("Empresa", text="Empresa")
+    tree.column("Empresa", width=200)  # Ajuste a largura conforme necessário
+
+    tree.heading("Atividade", text="Atividade")
+    tree.column("Atividade", width=200)
+    
+    tree.heading("Tipo", text="Tipo")
+    tree.column("Tipo", width=25)
+
+    tree.heading("Conta", text="Conta")
+    tree.column("Conta", width=150)
+
+    tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+    # Função para carregar e exibir todos os lançamentos na Treeview
+    def carregar_lancamentos():
+    # Limpar todos os itens da Treeview
+        for item in tree.get_children():
+            tree.delete(item)
+        
+        # Carregar os lançamentos do banco de dados e inserir na Treeview
+        lancamentos = buscar_todos_lancamentos()
+        for lancamento in lancamentos:
+            tree.insert("", "end", values=(
+                lancamento.get("Id", ""),
+                lancamento.get("Empresa", ""),
+                lancamento.get("Atividade", ""),
+                lancamento.get("Tipo", ""),
+                lancamento.get("Conta", "")
+            ))
+
+
+    # Carrega os dados iniciais
+    carregar_lancamentos()
+
+    # Carregar o ícone de modificação (substitua pelo caminho do seu ícone)
+    icon_image = Image.open("edit_icon.png").resize((16, 16))  # Ícone de 16x16
+    icon = ImageTk.PhotoImage(icon_image)
+    
+    # Carregar o ícone de modificação (substitua pelo caminho do seu ícone)
+    icon_delete_image = Image.open("delete_icon.png").resize((16, 16))  # Ícone de 16x16
+    icon_delete = ImageTk.PhotoImage(icon_delete_image)
+
+    # Função para editar o lançamento selecionado
+    def editar_lancamento():
+        selected_item = tree.selection()
+        if selected_item:
+            item = tree.item(selected_item)
+            lancamento_id = item["values"][0]
+            alterar_lancamento_tela(lancamento_id)
+            carregar_lancamentos()
+
+    def excluir_lancamento():
+        selected_item = tree.selection()
+        if selected_item:
+            item = tree.item(selected_item)
+            lancamento_id = item["values"][0]
+            
+            # Excluir o lançamento do banco de dados
+            database.excluir_lancamento_no_banco(lancamento_id)
+            
+            # Recarregar a lista para atualizar a Treeview
+            carregar_lancamentos()
+
+
+    # Botão de edição com ícone
+    # Cria um frame para colocar os botões lado a lado
+    button_frame = tk.Frame(listagem_janela)
+    button_frame.pack(pady=10)
+
+    # Botão de edição com ícone
+    btn_editar = tk.Button(button_frame, image=icon, command=editar_lancamento)
+    btn_editar.icon = icon  # Necessário manter uma referência ao ícone para evitar descarte
+    btn_editar.pack(side=tk.LEFT, padx=5)
+
+    # Botão de exclusão com ícone
+    btn_delete = tk.Button(button_frame, image=icon_delete, command=excluir_lancamento)
+    btn_delete.icon = icon_delete  # Necessário manter uma referência ao ícone para evitar descarte
+    btn_delete.pack(side=tk.LEFT, padx=5)
+
 
 def criar_menu():
     global root
@@ -831,23 +624,18 @@ def criar_menu():
     root.title("Sistema de Controle Contábil")
     root.geometry("600x600")
 
+    btn_listagem = tk.Button(root, text="Abrir Listagem de Lançamentos", width=30, command=abrir_tela_listagem)
+    btn_listagem.pack(pady=10)
+
     # Botão para adicionar lançamento
     btn_adicionar = tk.Button(root, text="Adicionar Lançamento", command=adicionar_lancamento_tela, width=30)
-    btn_adicionar.pack(pady=20)
-
-    # Botão para modificar lançamento
-    btn_alterar = tk.Button(root, text="Modificar Lançamento", command=alterar_lancamento_tela, width=30)
-    btn_alterar.pack(pady=10)
-
-    # Botão para excluir lançamento
-    btn_excluir = tk.Button(root, text="Excluir Lançamento", command=excluir_lancamento_tela, width=30)
-    btn_excluir.pack(pady=10)
+    btn_adicionar.pack(pady=10)
 
     # Botões para os relatórios gerais
-    btn_relatorio_geral = tk.Button(root, text="Gerar Relatório Geral (Pago)", command=gerar_relatorio_geral, width=30)
+    btn_relatorio_geral = tk.Button(root, text="Gerar Relatório Geral (Pago)", command=relatorios.gerar_relatorio_geral, width=30)
     btn_relatorio_geral.pack(pady=10)
 
-    btn_relatorio_geral_a_pagar = tk.Button(root, text="Gerar Relatório Geral (A Pagar)", command=gerar_relatorio_geral_a_pagar, width=30)
+    btn_relatorio_geral_a_pagar = tk.Button(root, text="Gerar Relatório Geral (A Pagar)", command=relatorios.gerar_relatorio_geral_a_pagar, width=30)
     btn_relatorio_geral_a_pagar.pack(pady=10)
 
     btn_relatorio_geral_a_receber = tk.Button(root, text="Gerar Relatório Geral (A Receber)", command=gerar_relatorio_geral_a_receber, width=30)

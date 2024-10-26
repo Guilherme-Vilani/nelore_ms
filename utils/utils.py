@@ -2,7 +2,6 @@ import locale
 import decimal
 from datetime import datetime
 
-locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 
 def formatar_moeda(valor):
     try:
@@ -11,6 +10,17 @@ def formatar_moeda(valor):
     except ValueError:
         return "Valor inválido"
 
+# Função para converter valor de string ou decimal para float (corrigido)
+def converter_valor_para_float(valor_str):
+    try:
+        if isinstance(valor_str, (float, int, decimal.Decimal)):
+            return float(valor_str)
+        valor_str = valor_str.replace('.', '').replace(',', '.')
+        return float(valor_str)
+    except (ValueError, AttributeError):
+        return None
+    
+# Função para formatar a data para o formato dd/mm/yyyy
 def formatar_data(data):
     if isinstance(data, datetime):
         return data.strftime('%d/%m/%Y')
