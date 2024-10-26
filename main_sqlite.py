@@ -1,4 +1,4 @@
-import sqlite3  # Substituir pyodbc por sqlite3
+import sqlite3
 import logging
 from tkinter.simpledialog import askstring
 from datetime import datetime
@@ -7,10 +7,8 @@ from tkinter import ttk
 import tkinter as tk
 from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
-import utils.utils as utils
 import database.database as database
 import utils.export_pdf as utilsPdf
-import services.lancamento_services as lancamentos
 import utils.relatorios as relatorios
 import matplotlib.pyplot as plt
 
@@ -440,7 +438,6 @@ def gerar_relatorio_por_conta():
     btn_filtrar.pack(pady=20)
 
 
-
 def abrir_tela_listagem():
     # Função para abrir a tela de listagem de lançamentos
     listagem_janela = tk.Toplevel()
@@ -564,7 +561,6 @@ def abrir_tela_listagem():
     btn_delete = tk.Button(button_frame, image=icon_delete, command=excluir_lancamento)
     btn_delete.icon = icon_delete  # Necessário manter uma referência ao ícone para evitar descarte
     btn_delete.pack(side=tk.LEFT, padx=5)
-
 
 def criar_menu():
     global root
