@@ -348,15 +348,24 @@ def gerar_grafico_barras():
         cursor.execute(query)
         resultados = cursor.fetchall()
 
-        # Preparar dados para o gráfico
+        # Preparar dados para o gráfico e filtrar contas com valores de crédito e/ou débito
         contas = []
         totais_credito = []
         totais_debito = []
 
         for row in resultados:
-            contas.append(row[0])
-            totais_credito.append(row[1])
-            totais_debito.append(row[2])
+            total_credito = row[1]
+            total_debito = row[2]
+
+            # Filtrar contas sem valores de crédito e débito
+            if total_credito > 0 or total_debito > 0:
+                contas.append(row[0])
+                totais_credito.append(total_credito)
+                totais_debito.append(total_debito)
+
+        if not contas:  # Verificar se há contas a serem exibidas no gráfico
+            messagebox.showinfo("Informação", "Nenhuma conta com valores de crédito ou débito.")
+            return
 
         # Plotar gráfico de barras
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -397,9 +406,11 @@ def gerar_grafico_barras():
 # Função para gerar relatório por conta contábil
 def gerar_relatorio_por_conta():
     contas_contabeis = ["Exposição", "Rodeio/Show", "Venda de Espaço", "Patrocinio", "Ranch Sorting", "Team Penning"]
+    tipos_lancamento = ["Crédito", "Débito"]  # Opções de tipo de lançamento
 
     def filtrar_relatorio():
-        conta_escolhida = combo_conta.get().lower()  # Pegando a seleção do combobox e padronizando para minúsculas
+        conta_escolhida = combo_conta.get().lower()  # Seleção do combobox para conta, em minúsculas
+        tipo_lancamento = combo_tipo.get().lower()   # Seleção do combobox para tipo de lançamento, em minúsculas
 
         # Mapear "rodeio" ou "shows" para "rodeio/show"
         if conta_escolhida in ["rodeio", "shows"]:
@@ -414,25 +425,40 @@ def gerar_relatorio_por_conta():
 
         # Buscar lançamentos no banco
         lancamentos = database.buscar_lancamentos_do_banco()
-        lancamentos_filtrados = [l for l in lancamentos if l['Conta'].lower() == conta_escolhida]
+        
+        # Filtrar lançamentos pela conta escolhida e pelo tipo de lançamento
+        lancamentos_filtrados = [
+            l for l in lancamentos 
+            if l['Conta'].lower() == conta_escolhida and l['Tipo'].lower() == tipo_lancamento
+        ]
 
         if not lancamentos_filtrados:
-            messagebox.showinfo("Relatório por Conta", f"Nenhum lançamento encontrado para a conta {conta_escolhida}.")
+            messagebox.showinfo("Relatório por Conta", f"Nenhum lançamento encontrado para a conta {conta_escolhida} do tipo {tipo_lancamento}.")
             return
 
         # Exportar para PDF
-        utilsPdf.exportar_para_pdf(lancamentos_filtrados, f"relatorio_{conta_escolhida.replace('/', '-')}.pdf", f"Relatório para a Conta {conta_escolhida}")
+        utilsPdf.exportar_para_pdf(
+            lancamentos_filtrados, 
+            f"relatorio_{conta_escolhida.replace('/', '-')}_{tipo_lancamento}.pdf", 
+            f"Relatório para a Conta {conta_escolhida} - Tipo: {tipo_lancamento}"
+        )
 
     # Criar a janela para filtrar o relatório por conta contábil
     relatorio_janela = tk.Toplevel(root)
     relatorio_janela.title("Relatório por Conta Contábil")
-    relatorio_janela.geometry("400x200")
+    relatorio_janela.geometry("400x250")
 
     tk.Label(relatorio_janela, text="Escolha a conta contábil:").pack(pady=10)
 
-    # Usar ComboBox em vez de campo de entrada de texto
+    # ComboBox para selecionar a conta contábil
     combo_conta = ttk.Combobox(relatorio_janela, values=contas_contabeis)
     combo_conta.pack()
+
+    tk.Label(relatorio_janela, text="Escolha o tipo de lançamento:").pack(pady=10)
+
+    # ComboBox para selecionar o tipo de lançamento (Crédito ou Débito)
+    combo_tipo = ttk.Combobox(relatorio_janela, values=tipos_lancamento)
+    combo_tipo.pack()
 
     btn_filtrar = tk.Button(relatorio_janela, text="Gerar Relatório", command=filtrar_relatorio)
     btn_filtrar.pack(pady=20)
