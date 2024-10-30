@@ -253,37 +253,6 @@ def excluir_lancamento_tela():
     btn_excluir = tk.Button(excluir_janela, text="Excluir", command=excluir)
     btn_excluir.pack(pady=10)
 
-# Função para gerar Relatório por Conta Contábil - A Pagar
-def gerar_relatorio_conta_a_pagar():
-    contas_contabeis = ["Exposição", "Rodeio/Show", "Venda de Espaço", "Patrocinio", "Ranch Sorting", "Team Penning"]
-
-    def filtrar_relatorio():
-        conta_escolhida = combo_conta.get().lower()
-        if conta_escolhida not in [c.lower() for c in contas_contabeis]:
-            messagebox.showwarning("Erro", "Conta contábil inválida!")
-            return
-
-        lancamentos = database.buscar_lancamentos_por_status_e_conta("A Pagar", conta_escolhida)
-        if not lancamentos:
-            messagebox.showinfo("Relatório por Conta - A Pagar", f"Nenhum lançamento com status 'A Pagar' para a conta {conta_escolhida}.")
-            return
-
-        nome_arquivo = f"relatorio_{conta_escolhida.replace('/', '-')}_a_pagar.pdf"
-        utilsPdf.exportar_para_pdf(lancamentos, nome_arquivo, f"Relatório por Conta - A Pagar ({conta_escolhida})")
-
-    # Interface gráfica para selecionar a conta contábil
-    relatorio_janela = tk.Toplevel(root)
-    relatorio_janela.title("Relatório por Conta - A Pagar")
-    relatorio_janela.geometry("400x200")
-    tk.Label(relatorio_janela, text="Escolha a conta contábil:").pack(pady=10)
-
-    combo_conta = ttk.Combobox(relatorio_janela, values=contas_contabeis)
-    combo_conta.pack()
-    btn_filtrar = tk.Button(relatorio_janela, text="Gerar Relatório", command=filtrar_relatorio)
-    btn_filtrar.pack(pady=20)
-
-
-# Função para gerar Relatório Geral - A Receber
 def gerar_relatorio_geral_a_receber():
     lancamentos = database.buscar_lancamentos_por_status("A Receber")
     if not lancamentos:
@@ -298,33 +267,144 @@ def gerar_relatorio_geral_a_receber():
 
     utilsPdf.exportar_para_pdf(lancamentos, nome_arquivo, "Relatório Geral - A Receber")
 
-
-# Função para gerar Relatório por Conta Contábil - A Receber
-def gerar_relatorio_conta_a_receber():
+def gerar_relatorio_por_conta():
     contas_contabeis = ["Exposição", "Rodeio/Show", "Venda de Espaço", "Patrocinio", "Ranch Sorting", "Team Penning"]
+    tipos_lancamento = ["Crédito", "Débito"]  # Opções de tipo de lançamento
+
+    def filtrar_relatorio():
+        conta_escolhida = combo_conta.get().lower()  # Seleção do combobox para conta, em minúsculas
+        tipo_lancamento = combo_tipo.get().lower()   # Seleção do combobox para tipo de lançamento, em minúsculas
+
+        # Mapear "rodeio" ou "shows" para "rodeio/show"
+        if conta_escolhida in ["rodeio", "shows"]:
+            conta_escolhida = "rodeio/show"
+
+        # Verificar se a conta é válida (inclui "rodeio/show")
+        contas_validas = [c.lower() for c in contas_contabeis] + ["rodeio/show"]
+
+        if conta_escolhida not in contas_validas:
+            messagebox.showwarning("Erro", "Conta contábil inválida!")
+            return
+
+        # Buscar lançamentos no banco
+        lancamentos = database.buscar_lancamentos_do_banco()
+        
+        # Filtrar lançamentos pela conta, tipo de lançamento e status "pago"
+        lancamentos_filtrados = [
+            l for l in lancamentos 
+            if l['Conta'].lower() == conta_escolhida 
+            and l['Tipo'].lower() == tipo_lancamento 
+            and l.get('Status', '').lower() == "pago"
+        ]
+
+        if not lancamentos_filtrados:
+            messagebox.showinfo("Relatório por Conta", f"Nenhum lançamento encontrado para a conta {conta_escolhida} do tipo {tipo_lancamento} com status 'pago'.")
+            return
+
+        # Exportar para PDF
+        utilsPdf.exportar_para_pdf(
+            lancamentos_filtrados, 
+            f"relatorio_{conta_escolhida.replace('/', '-')}_{tipo_lancamento}.pdf", 
+            f"Relatório para a Conta {conta_escolhida} - Tipo: {tipo_lancamento} - Status: Pago"
+        )
+
+    # Criar a janela para filtrar o relatório por conta contábil
+    relatorio_janela = tk.Toplevel(root)
+    relatorio_janela.title("Relatório por Conta Contábil")
+    relatorio_janela.geometry("400x250")
+
+    tk.Label(relatorio_janela, text="Escolha a conta contábil:").pack(pady=10)
+
+    # ComboBox para selecionar a conta contábil
+    combo_conta = ttk.Combobox(relatorio_janela, values=contas_contabeis)
+    combo_conta.pack()
+
+    tk.Label(relatorio_janela, text="Escolha o tipo de lançamento:").pack(pady=10)
+
+    # ComboBox para selecionar o tipo de lançamento (Crédito ou Débito)
+    combo_tipo = ttk.Combobox(relatorio_janela, values=tipos_lancamento)
+    combo_tipo.pack()
+
+    btn_filtrar = tk.Button(relatorio_janela, text="Gerar Relatório", command=filtrar_relatorio)
+    btn_filtrar.pack(pady=20)
+
+def gerar_relatorio_conta_a_pagar():
+    contas_contabeis = ["Exposição", "Rodeio/Show", "Venda de Espaço", "Patrocinio", "Ranch Sorting", "Team Penning"]
+    tipos_lancamento = ["Crédito", "Débito"]  # Opções para o tipo de lançamento
 
     def filtrar_relatorio():
         conta_escolhida = combo_conta.get().lower()
+        tipo_lancamento = combo_tipo.get().lower()  # Tipo de lançamento selecionado (Crédito ou Débito)
+
+        # Verificar se a conta contábil é válida
         if conta_escolhida not in [c.lower() for c in contas_contabeis]:
             messagebox.showwarning("Erro", "Conta contábil inválida!")
             return
 
-        lancamentos = database.buscar_lancamentos_por_status_e_conta("A Receber", conta_escolhida)
+        # Buscar lançamentos no banco de dados com base no status, conta e tipo de lançamento
+        lancamentos = database.buscar_lancamentos_por_status_conta_e_tipo("A Pagar", conta_escolhida, tipo_lancamento)
+
         if not lancamentos:
-            messagebox.showinfo("Relatório por Conta - A Receber", f"Nenhum lançamento com status 'A Receber' para a conta {conta_escolhida}.")
+            messagebox.showinfo("Relatório por Conta - A Pagar", f"Nenhum lançamento com status 'A Pagar' e tipo '{tipo_lancamento}' para a conta {conta_escolhida}.")
             return
 
-        nome_arquivo = f"relatorio_{conta_escolhida.replace('/', '-')}_a_receber.pdf"
-        utilsPdf.exportar_para_pdf(lancamentos, nome_arquivo, f"Relatório por Conta - A Receber ({conta_escolhida})")
+        # Nome do arquivo e exportação para PDF
+        nome_arquivo = f"relatorio_{conta_escolhida.replace('/', '-')}_a_pagar_{tipo_lancamento}.pdf"
+        utilsPdf.exportar_para_pdf(lancamentos, nome_arquivo, f"Relatório por Conta - A Pagar ({conta_escolhida}) - Tipo: {tipo_lancamento.capitalize()}")
 
-    # Interface gráfica para selecionar a conta contábil
+    # Interface gráfica para seleção da conta contábil e tipo de lançamento
     relatorio_janela = tk.Toplevel(root)
-    relatorio_janela.title("Relatório por Conta - A Receber")
-    relatorio_janela.geometry("400x200")
+    relatorio_janela.title("Relatório por Conta - A Pagar")
+    relatorio_janela.geometry("400x250")
     tk.Label(relatorio_janela, text="Escolha a conta contábil:").pack(pady=10)
 
     combo_conta = ttk.Combobox(relatorio_janela, values=contas_contabeis)
     combo_conta.pack()
+
+    tk.Label(relatorio_janela, text="Escolha o tipo de lançamento:").pack(pady=10)
+    combo_tipo = ttk.Combobox(relatorio_janela, values=tipos_lancamento)
+    combo_tipo.pack()
+
+    btn_filtrar = tk.Button(relatorio_janela, text="Gerar Relatório", command=filtrar_relatorio)
+    btn_filtrar.pack(pady=20)
+
+def gerar_relatorio_conta_a_receber():
+    contas_contabeis = ["Exposição", "Rodeio/Show", "Venda de Espaço", "Patrocinio", "Ranch Sorting", "Team Penning"]
+    tipos_lancamento = ["Crédito", "Débito"]  # Opções para o tipo de lançamento
+
+    def filtrar_relatorio():
+        conta_escolhida = combo_conta.get().lower()
+        tipo_lancamento = combo_tipo.get().lower()  # Tipo de lançamento selecionado (Crédito ou Débito)
+
+        # Verificar se a conta contábil é válida
+        if conta_escolhida not in [c.lower() for c in contas_contabeis]:
+            messagebox.showwarning("Erro", "Conta contábil inválida!")
+            return
+
+        # Buscar lançamentos no banco de dados com base no status, conta e tipo de lançamento
+        lancamentos = database.buscar_lancamentos_por_status_conta_e_tipo("A Receber", conta_escolhida, tipo_lancamento)
+
+        if not lancamentos:
+            messagebox.showinfo("Relatório por Conta - A Receber", f"Nenhum lançamento com status 'A Receber' e tipo '{tipo_lancamento}' para a conta {conta_escolhida}.")
+            return
+
+        # Nome do arquivo e exportação para PDF
+        nome_arquivo = f"relatorio_{conta_escolhida.replace('/', '-')}_a_receber_{tipo_lancamento}.pdf"
+        utilsPdf.exportar_para_pdf(lancamentos, nome_arquivo, f"Relatório por Conta - A Receber ({conta_escolhida}) - Tipo: {tipo_lancamento.capitalize()}")
+
+    # Interface gráfica para seleção da conta contábil e tipo de lançamento
+    relatorio_janela = tk.Toplevel(root)
+    relatorio_janela.title("Relatório por Conta - A Receber")
+    relatorio_janela.geometry("400x250")
+    tk.Label(relatorio_janela, text="Escolha a conta contábil:").pack(pady=10)
+
+    combo_conta = ttk.Combobox(relatorio_janela, values=contas_contabeis)
+    combo_conta.pack()
+
+    tk.Label(relatorio_janela, text="Escolha o tipo de lançamento:").pack(pady=10)
+    combo_tipo = ttk.Combobox(relatorio_janela, values=tipos_lancamento)
+    combo_tipo.pack()
+
     btn_filtrar = tk.Button(relatorio_janela, text="Gerar Relatório", command=filtrar_relatorio)
     btn_filtrar.pack(pady=20)
 
@@ -402,67 +482,6 @@ def gerar_grafico_barras():
     finally:
         cursor.close()
         conexao.close()
-
-# Função para gerar relatório por conta contábil
-def gerar_relatorio_por_conta():
-    contas_contabeis = ["Exposição", "Rodeio/Show", "Venda de Espaço", "Patrocinio", "Ranch Sorting", "Team Penning"]
-    tipos_lancamento = ["Crédito", "Débito"]  # Opções de tipo de lançamento
-
-    def filtrar_relatorio():
-        conta_escolhida = combo_conta.get().lower()  # Seleção do combobox para conta, em minúsculas
-        tipo_lancamento = combo_tipo.get().lower()   # Seleção do combobox para tipo de lançamento, em minúsculas
-
-        # Mapear "rodeio" ou "shows" para "rodeio/show"
-        if conta_escolhida in ["rodeio", "shows"]:
-            conta_escolhida = "rodeio/show"
-
-        # Verificar se a conta é válida (inclui "rodeio/show")
-        contas_validas = [c.lower() for c in contas_contabeis] + ["rodeio/show"]
-
-        if conta_escolhida not in contas_validas:
-            messagebox.showwarning("Erro", "Conta contábil inválida!")
-            return
-
-        # Buscar lançamentos no banco
-        lancamentos = database.buscar_lancamentos_do_banco()
-        
-        # Filtrar lançamentos pela conta escolhida e pelo tipo de lançamento
-        lancamentos_filtrados = [
-            l for l in lancamentos 
-            if l['Conta'].lower() == conta_escolhida and l['Tipo'].lower() == tipo_lancamento
-        ]
-
-        if not lancamentos_filtrados:
-            messagebox.showinfo("Relatório por Conta", f"Nenhum lançamento encontrado para a conta {conta_escolhida} do tipo {tipo_lancamento}.")
-            return
-
-        # Exportar para PDF
-        utilsPdf.exportar_para_pdf(
-            lancamentos_filtrados, 
-            f"relatorio_{conta_escolhida.replace('/', '-')}_{tipo_lancamento}.pdf", 
-            f"Relatório para a Conta {conta_escolhida} - Tipo: {tipo_lancamento}"
-        )
-
-    # Criar a janela para filtrar o relatório por conta contábil
-    relatorio_janela = tk.Toplevel(root)
-    relatorio_janela.title("Relatório por Conta Contábil")
-    relatorio_janela.geometry("400x250")
-
-    tk.Label(relatorio_janela, text="Escolha a conta contábil:").pack(pady=10)
-
-    # ComboBox para selecionar a conta contábil
-    combo_conta = ttk.Combobox(relatorio_janela, values=contas_contabeis)
-    combo_conta.pack()
-
-    tk.Label(relatorio_janela, text="Escolha o tipo de lançamento:").pack(pady=10)
-
-    # ComboBox para selecionar o tipo de lançamento (Crédito ou Débito)
-    combo_tipo = ttk.Combobox(relatorio_janela, values=tipos_lancamento)
-    combo_tipo.pack()
-
-    btn_filtrar = tk.Button(relatorio_janela, text="Gerar Relatório", command=filtrar_relatorio)
-    btn_filtrar.pack(pady=20)
-
 
 def abrir_tela_listagem():
     # Função para abrir a tela de listagem de lançamentos
